@@ -1,0 +1,716 @@
+---
+title: "etude_passes"
+author: "laurie dussere"
+date: '2022-10-11'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+devtools::install_github("statsbomb/StatsBombR")
+'https://statsbomb.com/news/statsbomb-announce-the-release-of-free-statsbomb-360-data-euro-2020-available-now/'
+```
+
+```{r warning=FALSE}
+library (StatsBombR)
+library(ggplot2)
+library(ggmosaic)
+library(dplyr)
+library(tidyverse)
+```
+
+```{r message=FALSE}
+Comp <- FreeCompetitions()
+
+Matches <- FreeMatches(Comp)
+
+Matches = Matches %>% filter(competition.competition_name=="UEFA Euro")
+
+data360 <- StatsBombFree360Events(MatchesDF = Matches[45,1], Parallel = T)    #[45,1]
+
+events <- StatsBombFreeEvents(MatchesDF = Matches[45,1], Parallel = T)
+
+events <- allclean(events)
+
+events <- get.opposingteam(events)
+
+data360 = data360 %>% rename(id = event_uuid)
+
+events = events %>% left_join(data360, by = c("id" = "id"))
+
+events = events %>% rename(match_id = match_id.x) %>% select(-match_id.y)
+
+View(events)
+```
+
+```{r}
+ffs = events %>%
+  group_by(team.name) %>%
+  filter(type.id==30) %>%
+  select(id, match_id, team.name, OpposingTeam, 
+         player.name, type.name,period,timestamp,
+         location.x, location.y, pass.end_location.x,pass.length,
+         pass.end_location.y, pass.recipient.name, possession_team.name, freeze_frame,pass.outcome.name,pass.switch,pass.body_part.name,pass.outcome.name,pass.type.name,pass.height.name,pass.shot_assist,under_pressure,pass.cross)
+#pass.technique.name
+
+ffs2=ffs
+
+ffs = ffs %>% unnest(freeze_frame) %>%
+  mutate(ff_location.x = (map(location, 1)), ff_location.y = (map(location, 2))) %>%
+  select(-location) %>%
+  mutate(ff_location.x = as.numeric(ifelse(ff_location.x == "NULL", NA, ff_location.x)),
+         ff_location.y = as.numeric(ifelse(ff_location.y == "NULL", NA, ff_location.y)))
+```
+
+```{r}
+if (ffs2[1,"location.x"]-ffs2[1,"pass.end_location.x"]>0){
+  team_left_first_half=as.character(ffs2[1,"team.name"])
+  team_right_first_half=as.character(ffs2[1,"OpposingTeam"])
+}
+if  (ffs2[1,"location.x"]-ffs2[1,"pass.end_location.x"]<0) {
+  team_left_first_half=as.character(ffs2[1,"OpposingTeam"])
+  team_right_first_half=as.character(ffs2[1,"team.name"])
+}
+
+team_left_second_half=team_right_first_half
+team_right_second_half=team_left_first_half
+
+
+team_left_first_half
+team_right_first_half
+
+team_left_second_half
+team_right_second_half
+```
+
+```{r}
+# team_left_first_half=as.character(ffs[which(ffs[,"ff_location.x"]<20),][1,"team.name"]) #faire attention à la limite car avec 20 on est pas sur de toujours avoir des joueurs qui sont compris dans cette limite.
+# team_right_first_half=as.character(ffs[which(ffs[,"ff_location.x"]>100),][1,"OpposingTeam"])
+# 
+# team_left_second_half=team_right_first_half
+# team_right_second_half=team_left_first_half
+# 
+# team_left_first_half
+```
+
+```{r warning=FALSE}
+# on affiche la première action de la première période
+France_1<-filter(ffs,id=="c5a1e95e-df4d-4c40-b6a0-7d5f785c39c7")
+
+#on définit parmi les joueurs du freeze frame, ceux qui sont membres de l'équipe adverse et ceux qui font partis de l'équipe du joueur qui fait la passe
+France_1$teammate[France_1 $teammate == "TRUE"]=1
+France_1$teammate[France_1 $teammate== "FALSE"]=0
+France_1$teammate=as.character(France_1$teammate)
+
+i=1
+for (i in 1:nrow(France_1)){
+  if (France_1[i,"teammate"]==1){
+      France_1[i,"teammate"]=France_1[i,"team.name"]
+  }
+  else{
+    France_1[i,"teammate"]=France_1[i,"OpposingTeam"]
+  }
+}
+
+# on affiche la passe (version zoomée)
+pass_player=which(France_1[,"actor"]=="TRUE")
+pass_player=France_1[pass_player,]
+
+if (France_1[1,"period"]==1){
+  p1=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),label=teammate),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")+
+  xlim(0, 120)+
+  ylim(0, 80)+
+  annotate("text", x = 3, y = 3, label =team_left_first_half)+
+  annotate("text", x = 110, y = 80, label =team_right_first_half)
+
+
+# on affiche la passe (version terrain complet)
+pass_player=which(France_1[,"actor"]=="TRUE")
+pass_player=France_1[pass_player,]
+
+p2=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),color=team.name),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")
+
+}
+
+
+if ((France_1[1,"period"]==2)==TRUE){
+  p1=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),label=teammate),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")+
+  xlim(0, 120)+
+  ylim(0, 80)+
+  annotate("text", x = 2, y = 2, label =team_left_second_half)+
+  annotate("text", x = 110, y = 80, label =team_right_second_half)
+
+
+# on affiche la passe (version terrain complet)
+  pass_player=which(France_1[,"actor"]=="TRUE")
+  pass_player=France_1[pass_player,]
+
+  p2=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),color=team.name),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")
+  
+}
+
+p1+ggtitle("première periode")
+p2+ggtitle("première periode")
+```
+
+```{r warning=FALSE}
+
+# on affiche la première action de la deuxième période
+France_1<-filter(ffs,id=="14a2dd27-5a19-42cd-a8f6-4409b4b2114c")
+
+#on définit parmi les joueurs du freeze frame, ceux qui sont membres de l'équipe adverse et ceux qui font partis de l'équipe du joueur qui fait la passe
+France_1$teammate[France_1 $teammate == "TRUE"]=1
+France_1$teammate[France_1 $teammate== "FALSE"]=0
+France_1$teammate=as.character(France_1$teammate)
+
+i=1
+for (i in 1:nrow(France_1)){
+  if (France_1[i,"teammate"]==1){
+      France_1[i,"teammate"]=France_1[i,"team.name"]
+  }
+  else{
+    France_1[i,"teammate"]=France_1[i,"OpposingTeam"]
+  }
+}
+
+# on affiche la passe (version zoomée)
+pass_player=which(France_1[,"actor"]=="TRUE")
+pass_player=France_1[pass_player,]
+
+if (France_1[1,"period"]==1){
+  p1=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),label=teammate),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")+
+  xlim(0, 120)+
+  ylim(0, 80)+
+  annotate("text", x = 3, y = 3, label =team_left_first_half)+
+  annotate("text", x = 110, y = 80, label =team_right_first_half)
+
+
+# on affiche la passe (version terrain complet)
+pass_player=which(France_1[,"actor"]=="TRUE")
+pass_player=France_1[pass_player,]
+
+p2=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),color=team.name),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")
+
+}
+
+
+if ((France_1[1,"period"]==2)==TRUE){
+  p1=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),label=teammate),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")+
+  xlim(0, 120)+
+  ylim(0, 80)+
+  annotate("text", x = 2, y = 2, label =team_left_second_half)+
+  annotate("text", x = 110, y = 80, label =team_right_second_half)
+
+
+# on affiche la passe (version terrain complet)
+  pass_player=which(France_1[,"actor"]=="TRUE")
+  pass_player=France_1[pass_player,]
+
+  p2=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),color=team.name),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")
+  
+}
+
+p1+ggtitle("deuxième periode")
+p2+ggtitle("deuxième periode")
+
+
+```
+
+
+```{r}
+# passe gardien période 1
+France_1<-filter(ffs,id=="ceaa9cb5-2d78-4965-962e-ce825909ac8a") #passe gardien
+```
+
+```{r}
+#on définit parmi les joueurs du freeze frame, ceux qui sont membres de l'équipe adverse et ceux qui font partis de l'équipe du joueur qui fait la passe
+France_1$teammate[France_1 $teammate == "TRUE"]=1
+France_1$teammate[France_1 $teammate== "FALSE"]=0
+France_1$teammate=as.character(France_1$teammate)
+
+i=1
+for (i in 1:nrow(France_1)){
+  if (France_1[i,"teammate"]==1){
+      France_1[i,"teammate"]=France_1[i,"team.name"]
+  }
+  else{
+    France_1[i,"teammate"]=France_1[i,"OpposingTeam"]
+  }
+}
+```
+
+```{r warning=FALSE}
+# on complète les données manquantes
+France_1[is.na(France_1[,"pass.switch"]),"pass.switch"]=FALSE
+France_1[is.na(France_1[,"pass.cross"]),"pass.cross"]=FALSE
+France_1[is.na(France_1[,"under_pressure"]),"under_pressure"]=FALSE
+France_1[is.na(France_1[,"pass.shot_assist"]),"pass.shot_assist"]=FALSE
+
+France_1[is.na(France_1[,"pass.outcome.name"]),"pass.outcome.name"]="Complete"
+#France_1[,"pass.outcome.name"]=factor(France_1[,"pass.outcome.name"])
+
+France_1[is.na(France_1[,"pass.type.name"]),"pass.type.name"]="Classic"
+#France_1[i,"pass.type.name"]= factor(France_1[,"pass.type.name"])
+```
+
+
+```{r warning=FALSE}
+# on affiche la passe (version zoomée)
+pass_player=which(France_1[,"actor"]=="TRUE")
+pass_player=France_1[pass_player,]
+
+if (France_1[1,"period"]==1){
+  p1=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),label=teammate),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")+
+  xlim(0, 120)+
+  ylim(0, 80)+
+  annotate("text", x = 3, y = 3, label =team_left_first_half)+
+  annotate("text", x = 110, y = 80, label =team_right_first_half)
+
+
+# on affiche la passe (version terrain complet)
+pass_player=which(France_1[,"actor"]=="TRUE")
+pass_player=France_1[pass_player,]
+
+p2=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),color=team.name),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")
+
+}
+
+
+if ((France_1[1,"period"]==2)==TRUE){
+  p1=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),label=teammate),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")+
+  xlim(0, 120)+
+  ylim(0, 80)+
+  annotate("text", x = 2, y = 2, label =team_left_second_half)+
+  annotate("text", x = 110, y = 80, label =team_right_second_half)
+
+
+# on affiche la passe (version terrain complet)
+  pass_player=which(France_1[,"actor"]=="TRUE")
+  pass_player=France_1[pass_player,]
+
+  p2=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),color=team.name),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")
+  
+}
+
+p1
+p2
+```
+
+# autre passe
+
+```{r}
+#passe gardien période 2
+France_1<-filter(ffs,id=="8f6de8da-38de-441f-b64c-f21e5c0345ca")
+#France_1<-filter(ffs,id=="a0e7e541-f56c-45ef-a9ed-541c62744fa1")
+# France_1<-filter(ffs,id=="dcb21669-4a21-40e5-b163-6286e4540ce0")
+```
+
+```{r}
+#on définit parmi les joueurs du freeze frame, ceux qui sont membres de l'équipe adverse et ceux qui font partis de l'équipe du joueur qui fait la passe
+France_1$teammate[France_1 $teammate == "TRUE"]=1
+France_1$teammate[France_1 $teammate== "FALSE"]=0
+France_1$teammate=as.character(France_1$teammate)
+
+i=1
+for (i in 1:nrow(France_1)){
+  if (France_1[i,"teammate"]==1){
+      France_1[i,"teammate"]=France_1[i,"team.name"]
+  }
+  else{
+    France_1[i,"teammate"]=France_1[i,"OpposingTeam"]
+  }
+}
+```
+
+```{r warning=FALSE}
+# on complète les données manquantes
+France_1[is.na(France_1[,"pass.switch"]),"pass.switch"]=FALSE
+France_1[is.na(France_1[,"pass.cross"]),"pass.cross"]=FALSE
+France_1[is.na(France_1[,"under_pressure"]),"under_pressure"]=FALSE
+France_1[is.na(France_1[,"pass.shot_assist"]),"pass.shot_assist"]=FALSE
+
+France_1[is.na(France_1[,"pass.outcome.name"]),"pass.outcome.name"]="Complete"
+#France_1[,"pass.outcome.name"]=factor(France_1[,"pass.outcome.name"])
+
+France_1[is.na(France_1[,"pass.type.name"]),"pass.type.name"]="Classic"
+#France_1[i,"pass.type.name"]= factor(France_1[,"pass.type.name"])
+```
+
+
+```{r warning=FALSE}
+# on affiche la passe (version zoomée)
+pass_player=which(France_1[,"actor"]=="TRUE")
+pass_player=France_1[pass_player,]
+
+if (France_1[1,"period"]==1){
+  p1=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),label=teammate),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")+
+  xlim(0, 120)+
+  ylim(0, 80)+
+  annotate("text", x = 3, y = 3, label =team_left_first_half)+
+  annotate("text", x = 110, y = 80, label =team_right_first_half)
+
+
+# on affiche la passe (version terrain complet)
+pass_player=which(France_1[,"actor"]=="TRUE")
+pass_player=France_1[pass_player,]
+
+p2=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),color=team.name),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")
+
+}
+
+
+if ((France_1[1,"period"]==2)==TRUE){
+  p1=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),label=teammate),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")+
+  xlim(0, 120)+
+  ylim(0, 80)+
+  annotate("text", x = 2, y = 2, label =team_left_second_half)+
+  annotate("text", x = 110, y = 80, label =team_right_second_half)
+
+
+# on affiche la passe (version terrain complet)
+  pass_player=which(France_1[,"actor"]=="TRUE")
+  pass_player=France_1[pass_player,]
+
+  p2=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),color=team.name),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")
+  
+}
+
+p1
+p2
+```
+
+
+# test pour la fonction de break_line
+
+```{r}
+View(ffs)
+```
+
+
+```{r}
+#France_1<-filter(ffs,id=="813a0fbd-9c8b-4f02-a526-b284519a3e0c") #ligne cassée pour plus de 2 joueurs
+
+France_1<-filter(ffs,id=="2084bdc0-dd40-4180-a700-c39338dc719b") #2 joueurs et pas de break_line
+
+
+#France_1<-filter(ffs,id=="1beb436e-5702-4a3d-8f06-7f37edfbc596") #ligne de 4
+
+
+#France_1<-filter(ffs,id=="27d6f642-447f-4082-bf5d-e585dac3f995") #3 joueurs éliminés
+
+France_1<-filter(ffs,id=="d2ff1a7c-49fa-4bfe-a2fc-cc4d2948fa96")
+```
+
+```{r}
+#on définit parmi les joueurs du freeze frame, ceux qui sont membres de l'équipe adverse et ceux qui font partis de l'équipe du joueur qui fait la passe
+France_1$teammate[France_1 $teammate == "TRUE"]=1
+France_1$teammate[France_1 $teammate== "FALSE"]=0
+France_1$teammate=as.character(France_1$teammate)
+
+i=1
+for (i in 1:nrow(France_1)){
+  if (France_1[i,"teammate"]==1){
+      France_1[i,"teammate"]=France_1[i,"team.name"]
+  }
+  else{
+    France_1[i,"teammate"]=France_1[i,"OpposingTeam"]
+  }
+}
+```
+
+```{r warning=FALSE}
+# on complète les données manquantes
+France_1[is.na(France_1[,"pass.switch"]),"pass.switch"]=FALSE
+France_1[is.na(France_1[,"pass.cross"]),"pass.cross"]=FALSE
+France_1[is.na(France_1[,"under_pressure"]),"under_pressure"]=FALSE
+France_1[is.na(France_1[,"pass.shot_assist"]),"pass.shot_assist"]=FALSE
+
+France_1[is.na(France_1[,"pass.outcome.name"]),"pass.outcome.name"]="Complete"
+#France_1[,"pass.outcome.name"]=factor(France_1[,"pass.outcome.name"])
+
+France_1[is.na(France_1[,"pass.type.name"]),"pass.type.name"]="Classic"
+#France_1[i,"pass.type.name"]= factor(France_1[,"pass.type.name"])
+```
+
+
+```{r warning=FALSE}
+# on affiche la passe (version zoomée)
+pass_player=which(France_1[,"actor"]=="TRUE")
+pass_player=France_1[pass_player,]
+
+if (France_1[1,"period"]==1){
+  p1=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),label=teammate),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")+
+  xlim(0, 120)+
+  ylim(0, 80)+
+  annotate("text", x = 3, y = 3, label =team_left_first_half)+
+  annotate("text", x = 110, y = 80, label =team_right_first_half)
+
+
+# on affiche la passe (version terrain complet)
+pass_player=which(France_1[,"actor"]=="TRUE")
+pass_player=France_1[pass_player,]
+
+p2=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),color=team.name),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")
+
+}
+
+
+if ((France_1[1,"period"]==2)==TRUE){
+  p1=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),label=teammate),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")+
+  xlim(0, 120)+
+  ylim(0, 80)+
+  annotate("text", x = 2, y = 2, label =team_left_second_half)+
+  annotate("text", x = 110, y = 80, label =team_right_second_half)
+
+
+# on affiche la passe (version terrain complet)
+  pass_player=which(France_1[,"actor"]=="TRUE")
+  pass_player=France_1[pass_player,]
+
+  p2=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),color=team.name),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")
+  
+}
+
+p1
+p2
+```
+
+```{r}
+#fonction qui compte combien de joueurs de l'équipe adverse sont "éliminés" par la passe
+eliminated_player_left=function(data){
+  player=which((data[,"teammate"]!=data[,"team.name"]) & (data[,"ff_location.x"]<data[,"pass.end_location.x"]) & (data[,"ff_location.x"]>data[,"location.x"]))
+  return (data[player,])
+}
+
+eliminated_player_right=function(data){
+  player=which((data[,"teammate"]!=data[,"team.name"]) & (data[,"ff_location.x"]>data[,"pass.end_location.x"]) & (data[,"ff_location.x"]<data[,"location.x"]))
+  return (data[player,])
+}
+
+
+
+eliminated_player=function(data){
+  if (data[1,"period"]==1 | data[1,"period"]==3){
+    if (team_left_first_half==data[1,"team.name"]){
+    return((eliminated_player_left(data)))
+    }
+    else {
+    return ((eliminated_player_right(data)))
+    }
+  }
+
+    if (data[1,"period"]==2 | data[1,"period"]==4){
+    if (team_left_second_half==data[1,"team.name"]){
+    return((eliminated_player_left(data)))
+    }
+    else {
+
+    return((eliminated_player_right(data)))
+}
+}
+}
+```
+
+```{r}
+#nombre de joueur éliminés par la passe
+players_elim=(eliminated_player(France_1))
+nrow(players_elim)
+```
+
+```{r}
+players_elim=players_elim %>% arrange((ff_location.x))
+players_elim=data.frame(players_elim)
+players_elim
+```
+```{r}
+#fonction qui permet de dire si des joueurs sont alignés et retourne un dataframe avec les joueurs qui le sont
+is.aligned=function(data,marge){
+  aligned=FALSE
+
+i=1
+row=nrow(data)
+for (i in (1:(nrow(data)-1))){
+  i=1
+  if (abs(data[i,"ff_location.x"]-data[row,"ff_location.x"])<marge){
+    print(abs(data[i,"ff_location.x"]-data[row,"ff_location.x"]))
+    aligned=TRUE
+    break
+    }
+    else {
+    print(abs(data[i,"ff_location.x"]-data[row,"ff_location.x"]))
+    data=data[-i,]
+    row=nrow(data)
+    print(row)}
+  }
+    
+  return (list(data,aligned))
+}
+```
+
+```{r}
+is.aligned(players_elim,5)
+```
+
+
+
+
+
+```{r}
+is_line=function(data,length_min,dist_players.x,dist_players.y){
+  players_line_break=eliminated_player(data)
+  elim_players=nrow(players_line_break)
+  break_line=FALSE
+  if (data[1,"pass.outcome.name"]=="Complete" & data[1,"pass.length"]>=length_min){
+    if (abs(players_line_break[1,"ff_location.x"]-players_line_break[2,"ff_location.y"])<dist_players.x & abs(players_line_break[1,"ff_location.y"]-players_line_break[2,"ff_location.y"])>dist_players.y){
+        break_line=TRUE
+      }
+  }
+  
+# rajouter une condition pour savoir si ça casse une ligne en 2, il faut que ça passe entre les joueurs et pas largement au dessus ou en dessous 
+  
+  
+  # else if (data[1,"pass.outcome.name"]=="Complete"& nrow(players_line_break)==2){
+  #   new.data=players_line_break
+  #   num_line=rep(1,elim_players)
+  #   new.data=cbind(new.data,num_line)
+  #   colnames(new.data)[ncol(new.data)]="num_line"
+  #   head(new.data)
+  #   
+  # }
+  return (break_line)
+}
+```
+
+```{r}
+is_line(France_1,10,3,8)
+```
+
+```{r}
+
+#On dit qu'une ligne est cassée si la passe est complète, longue d'au moins 10 mètre et qu'elle casse une ligne de défenseur
+#La ligne se définit comme une ligne verticale entre au moins 2 défenseurs qui sont distants d'au moins 1 mètre.
+# test=function(data){
+#   elim_players=nrow(eliminated_player(data))
+#   players_line_break=eliminated_player(data)
+#   if (data[1,"pass.outcome.name"]=="Complete" & data[1,"pass.length"]>10 & elim_players>=2){
+#     for i in (1:elim_players-1){
+#       if abs(eliminated_players(data)[i,ff_location.x]-eliminated_players(data)[i+1,ff_location.x])>3{
+#         players_line_break=players_line_break[-i,]
+#       }
+# 
+#     }
+#   }
+#     
+#   
+# }
+```
+
+
+```{r}
+eliminated_player(France_1)
+```
+
+
