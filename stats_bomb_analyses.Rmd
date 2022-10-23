@@ -1,0 +1,397 @@
+---
+title: "stats_bomb_analyses"
+author: "laurie dussere"
+date: '2022-10-18'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+devtools::install_github("statsbomb/StatsBombR")
+'https://statsbomb.com/news/statsbomb-announce-the-release-of-free-statsbomb-360-data-euro-2020-available-now/'
+```
+
+```{r warning=FALSE}
+library (StatsBombR)
+library(ggplot2)
+library(ggmosaic)
+library(dplyr)
+library(tidyverse)
+```
+
+```{r message=FALSE}
+Comp <- FreeCompetitions()
+
+Matches <- FreeMatches(Comp)
+
+Matches = Matches %>% filter(competition.competition_name=="UEFA Euro")
+
+data360 <- StatsBombFree360Events(MatchesDF = Matches[45,1], Parallel = T)    #[45,1]
+
+events <- StatsBombFreeEvents(MatchesDF = Matches[45,1], Parallel = T)
+
+events <- allclean(events)
+
+events <- get.opposingteam(events)
+
+data360 = data360 %>% rename(id = event_uuid)
+
+events = events %>% left_join(data360, by = c("id" = "id"))
+
+events = events %>% rename(match_id = match_id.x) %>% select(-match_id.y)
+
+```
+
+```{r}
+ffs = events %>%
+  group_by(team.name) %>%
+  filter(type.id==30) %>%
+  select(id, match_id, team.name, OpposingTeam, 
+         player.name, type.name,period,timestamp,
+         location.x, location.y, pass.end_location.x,pass.length,
+         pass.end_location.y, pass.recipient.name, possession_team.name, freeze_frame,pass.outcome.name,pass.switch,pass.body_part.name,pass.outcome.name,pass.type.name,pass.height.name,pass.shot_assist,under_pressure,pass.cross)
+#pass.technique.name
+
+ffs2=ffs
+
+ffs = ffs %>% unnest(freeze_frame) %>%
+  mutate(ff_location.x = (map(location, 1)), ff_location.y = (map(location, 2))) %>%
+  select(-location) %>%
+  mutate(ff_location.x = as.numeric(ifelse(ff_location.x == "NULL", NA, ff_location.x)),
+         ff_location.y = as.numeric(ifelse(ff_location.y == "NULL", NA, ff_location.y)))
+```
+
+
+```{r}
+# on détermine quel joueur joue à gauche où à droite
+#sinon on peut prendre direct teamname
+if (ffs2[1,"location.x"]-ffs2[1,"pass.end_location.x"]>0){
+  team_left_first_half=as.character(ffs2[1,"team.name"])
+  team_right_first_half=as.character(ffs2[1,"OpposingTeam"])
+}
+if  (ffs2[1,"location.x"]-ffs2[1,"pass.end_location.x"]<0) {
+  team_left_first_half=as.character(ffs2[1,"OpposingTeam"])
+  team_right_first_half=as.character(ffs2[1,"team.name"])
+}
+
+team_left_second_half=team_right_first_half
+team_right_second_half=team_left_first_half
+
+
+team_left_first_half
+team_right_first_half
+
+team_left_second_half
+team_right_second_half
+
+
+ffs2=ffs
+
+
+ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),][,"location.x"]=120.0-ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),"location.x"]
+ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),][,"pass.end_location.x"]=120.0-ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),"pass.end_location.x"]
+ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),][,"ff_location.x"]=120.0-ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),"ff_location.x"]
+
+ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),][,"location.x"]=120.0-ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),"location.x"]
+ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),][,"pass.end_location.x"]=120.0-ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),"pass.end_location.x"]
+ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),][,"ff_location.x"]=120.0-ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),"ff_location.x"]
+
+#inverse les coordonnées du y car le 0 est en haut à gauche
+ffs2[,"ff_location.y"]=80.0-ffs2[,"ff_location.y"]
+ffs2[,"location.y"]=80.0-ffs2[,"location.y"]
+ffs2[,"pass.end_location.y"]=80.0-ffs2[,"pass.end_location.y"]
+```
+
+# Etude d'une passe
+
+```{r}
+France_1<-filter(ffs,id=="22612d6c-6e85-48ac-b4cd-4ba1f57b81ed") #passe intéressante 10 joueurs
+#France_1<-filter(ffs,id=="7be2161b-9a2f-430d-b8db-9149c930990a")
+France_1<-filter(ffs,id=="2dc392ac-47cf-4871-adfb-53384a2e5a5d") 
+France_1<-filter(ffs,id=="f0e3f107-6eef-46c8-a0b0-a7faad2ccae2") #passe bien pour voir des lignes cassées.
+```
+
+```{r}
+#on définit parmi les joueurs du freeze frame, ceux qui sont membres de l'équipe adverse et ceux qui font partis de l'équipe du joueur qui fait la passe
+France_1$teammate[France_1 $teammate == "TRUE"]=1
+France_1$teammate[France_1 $teammate== "FALSE"]=0
+France_1$teammate=as.character(France_1$teammate)
+
+i=1
+for (i in 1:nrow(France_1)){
+  if (France_1[i,"teammate"]==1){
+      France_1[i,"teammate"]=France_1[i,"team.name"]
+  }
+  else{
+    France_1[i,"teammate"]=France_1[i,"OpposingTeam"]
+  }
+}
+```
+
+```{r warning=FALSE}
+# on complète les données manquantes
+France_1[is.na(France_1[,"pass.switch"]),"pass.switch"]=FALSE
+France_1[is.na(France_1[,"pass.cross"]),"pass.cross"]=FALSE
+France_1[is.na(France_1[,"under_pressure"]),"under_pressure"]=FALSE
+France_1[is.na(France_1[,"pass.shot_assist"]),"pass.shot_assist"]=FALSE
+
+France_1[is.na(France_1[,"pass.outcome.name"]),"pass.outcome.name"]="Complete"
+#France_1[,"pass.outcome.name"]=factor(France_1[,"pass.outcome.name"])
+
+France_1[is.na(France_1[,"pass.type.name"]),"pass.type.name"]="Classic"
+#France_1[i,"pass.type.name"]= factor(France_1[,"pass.type.name"])
+```
+
+
+```{r warning=FALSE}
+# on affiche la passe (version zoomée)
+pass_player=which(France_1[,"actor"]=="TRUE")
+pass_player=France_1[pass_player,]
+
+if (France_1[1,"period"]==1){
+  p1=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),label=teammate),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")+
+  xlim(0, 120)+
+  ylim(0, 80)+
+  annotate("text", x = 3, y = 3, label =team_left_first_half)+
+  annotate("text", x = 110, y = 80, label =team_right_first_half)
+
+
+# on affiche la passe (version terrain complet)
+pass_player=which(France_1[,"actor"]=="TRUE")
+pass_player=France_1[pass_player,]
+
+p2=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),color=team.name),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")
+
+}
+
+
+if ((France_1[1,"period"]==2)==TRUE){
+  p1=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),label=teammate),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")+
+  xlim(0, 120)+
+  ylim(0, 80)+
+  annotate("text", x = 2, y = 2, label =team_left_second_half)+
+  annotate("text", x = 110, y = 80, label =team_right_second_half)
+
+
+# on affiche la passe (version terrain complet)
+  pass_player=which(France_1[,"actor"]=="TRUE")
+  pass_player=France_1[pass_player,]
+
+  p2=ggplot(France_1, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),color=team.name),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")
+  
+}
+
+p1
+p2
+```
+
+# test pour la fonction de break_line
+
+```{r}
+#France_1<-filter(ffs,id=="813a0fbd-9c8b-4f02-a526-b284519a3e0c") #ligne cassée pour plus de 2 joueurs
+
+#France_1<-filter(ffs,id=="2084bdc0-dd40-4180-a700-c39338dc719b") #2 joueurs et pas de break_line
+
+
+#France_1<-filter(ffs,id=="1beb436e-5702-4a3d-8f06-7f37edfbc596") #ligne de 4
+
+
+#France_1<-filter(ffs,id=="27d6f642-447f-4082-bf5d-e585dac3f995") #3 joueurs éliminés
+
+#France_1<-filter(ffs,id=="d2ff1a7c-49fa-4bfe-a2fc-cc4d2948fa96")
+```
+
+```{r}
+#fonction qui compte combien de joueurs de l'équipe adverse sont "éliminés" par la passe
+eliminated_player=function(data){
+  player=which((data[,"teammate"]!=data[,"team.name"]) & (data[,"ff_location.x"]<data[,"pass.end_location.x"]) & (data[,"ff_location.x"]>data[,"location.x"]))
+  return (data[player,])
+}
+
+# fonction qui permet de déterminer si 2 segments se croisent
+ccw=function(A,B,C)
+{
+  return ((C[2]-A[2])*(B[1]-A[1])>(B[2]-A[2])*(C[1]-A[1]))
+}
+do_intersec=function(player1,player2,pass.start,pass.end){
+  return (ccw(player1,pass.start,pass.end) != ccw(player2,pass.start,pass.end) & ccw(player1,player2,pass.start)!= ccw(player1,player2,pass.end))
+}
+
+```
+
+
+
+
+```{r}
+#nombre de joueur éliminés par la passe
+players_elim=(eliminated_player(France_1))
+#players_elim=players_elim[-c(1,2),]
+players_elim=players_elim %>% arrange((ff_location.x))
+players_elim=data.frame(players_elim)
+players_elim
+```
+
+```{r}
+# break_line=function(data,x_dist,y_dist,pass.length){
+#   #elim_players=eliminated_players(data)
+#   #players_elim=players_elim %>% arrange((ff_location.x))
+#   #players_elim=data.frame(players_elim)
+#   line_broken=FALSE
+#   vector_broken=c()
+#   
+#   if (data[1,"pass.outcome.name"]=="Complete" & data[1,"pass.length"]>pass.length){
+#     if (nrow(players_elim)>=2){
+#       for (i in (1:(nrow(players_elim)-1))){
+#           for (j in (nrow(players_elim):(i+1))){
+#             print(i)
+#             print(j)
+#             if (abs(players_elim[i,"ff_location.x"]-players_elim[j,"ff_location.x"])<x_dist & abs(players_elim[i,"ff_location.y"]-players_elim[j,"ff_location.y"])>y_dist){
+#               player1=c(players_elim[i,"ff_location.x"],players_elim[i,"ff_location.y"])
+#               player2=c(players_elim[j,"ff_location.x"],players_elim[j,"ff_location.y"])
+#               pass.start=c(players_elim[i,"location.x"],players_elim[i,"location.y"])
+#               pass.end=c(players_elim[j,"pass.end_location.x"],players_elim[j,"pass.end_location.y"])
+# 
+#               line_broken=do_intersec(player1,player2,pass.start,pass.end)
+#               print(line_broken)
+#               vector_broken=append(vector_broken,line_broken,after=length(vector_broken))
+#               break
+#             }
+#           }
+#           if (j==nrow(players_elim)){
+#               break
+#           }
+# 
+#        }
+#       }
+# 
+# 
+#     }
+#   return (vector_broken)
+#   }
+```
+
+```{r}
+break_line(players_elim,3,8,10)
+```
+
+
+```{r}
+break_line=function(data,x_dist,y_dist,pass.length){
+  #elim_players=eliminated_players(data)
+  #players_elim=players_elim %>% arrange((ff_location.x))
+  #players_elim=data.frame(players_elim)
+  line_broken=FALSE
+  i=1
+  line=0
+  vector_broken=c()
+  num_line=0
+  
+  #on rajoute une colonne qui dit si le joueur éliminé appartient à une ligne
+  new_elim_players=cbind(players_elim,rep("no_line",nrow(players_elim)))
+  colnames(new_elim_players)[ncol(new_elim_players)]="num_line"
+  # on rajoute une colonne qui dit si la ligne auqeuelle appartient le joueur a été cassée ou non 
+    new_elim_players=cbind(new_elim_players,rep(FALSE,nrow(new_elim_players)))
+    colnames(new_elim_players)[ncol(new_elim_players)]="broken_line"
+  
+  
+  if (data[1,"pass.outcome.name"]=="Complete" & data[1,"pass.length"]>pass.length){
+    if (nrow(players_elim)>=2){
+      for (i in (1:(nrow(players_elim)-1))){
+        
+        #si on a déja trouvé 
+          if (line==1){
+             i=j
+           }
+          line=0
+          
+          paste("i=",i)
+          
+          for (j in (nrow(players_elim):(i+1))){
+            
+            print(i)
+            print(j)
+            
+            if (abs(players_elim[i,"ff_location.x"]-players_elim[j,"ff_location.x"])<x_dist){
+              line=1
+              num_line=num_line+1
+              
+              if (new_elim_players[i,"num_line"]!="no_line"){
+                new_elim_players[seq(i,j, by = 1),"num_line"]=paste(new_elim_players[i,"num_line"],"+ line" ,num_line)
+                }
+               else {new_elim_players[seq(i,j, by = 1),"num_line"]=paste("line" ,num_line)}
+              
+               
+              
+              new_elim_players[seq(i,j, by = 1),"num_line"]=paste("line" ,num_line)
+              
+              if (abs(players_elim[i,"ff_location.y"]-players_elim[j,"ff_location.y"])>y_dist){
+              player1=c(players_elim[i,"ff_location.x"],players_elim[i,"ff_location.y"])
+              player2=c(players_elim[j,"ff_location.x"],players_elim[j,"ff_location.y"])
+              pass.start=c(players_elim[i,"location.x"],players_elim[i,"location.y"])
+              pass.end=c(players_elim[j,"pass.end_location.x"],players_elim[j,"pass.end_location.y"])
+
+              line_broken=do_intersec(player1,player2,pass.start,pass.end)
+              
+              #on rajoute un booléan pour dire si la ligne est cassée ou non 
+              new_elim_players[seq(i,j, by = 1),"broken_line"]=line_broken
+              
+              
+              vector_broken=append(vector_broken,line_broken,after=length(vector_broken))
+              
+              print((vector_broken))
+              
+              
+              break
+            }
+              
+              
+            } 
+          }
+          if (j==nrow(players_elim)){
+              break
+          }
+        
+        if (i==nrow(players_elim)-1)
+        {break}
+       }
+      }
+
+
+    }
+  return (list(new_elim_players,vector_broken))
+  }
+```
+
+
+```{r}
+break_line(players_elim,3,8,10)
+```
+
+
+
+
+
+
