@@ -75,7 +75,6 @@ France_1$teammate[France_1 $teammate== "FALSE"]<-"France"
 View(France_1)
 ```
 
-
 ```{r}
 # ## Je vais garder ici que les pass_switch qui sont égales à true 
 # # switch : a switch is any pass that travels more than 40 yards of the width od the pitch (40 yards=36m) 
@@ -250,6 +249,7 @@ ggplot(data = France_passes2) +
   xlab("Variable")+
   ggtitle("Etude des caractéristiques des passes")
 ```
+
 ```{r fig.height=10}
 ggplot(data = France_passes2) +
   geom_mosaic(aes(x=product(pass.outcome.name), fill= pass.body_part.name)) + 
@@ -259,8 +259,7 @@ ggplot(data = France_passes2) +
   ggtitle("Etude des caractéristiques des passes")
 ```
 
-
-# Etude de la longueur des passes 
+# Etude de la longueur des passes
 
 ```{r}
 ggplot(France_passes2) +
@@ -271,6 +270,7 @@ ggplot(France_passes2) +
   ylab("longueur de la passe") +
   ggtitle("etude longueur de la passe")
 ```
+
 # etude de la position de début de passe
 
 ```{r}
@@ -282,6 +282,7 @@ ggplot(France_passes2) +
   ylab("position début") +
   ggtitle("etude position du début de la passe")
 ```
+
 ```{r}
 ggplot(France_passes2, aes(x=location.x, y=pass.length)) + 
   geom_point(aes(color=pass.height.name,shape=pass.outcome.name))+
@@ -292,12 +293,10 @@ ggplot(France_passes2, aes(x=location.y, y=pass.length)) +
   geom_smooth(method=lm)
 ```
 
-# moyenne 
+# moyenne
 
 ```{r}
 summary(France_passes2[,"location.x"])
 summary(France_passes2[,"location.y"])
 summary(France_passes2[,"pass.length"])
 ```
-
-

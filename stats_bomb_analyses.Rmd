@@ -414,7 +414,7 @@ line_match=function(data){
         i=i+1
     }
     else {
-      #on crée un sous dataset qui correpond aux infos d'une passe
+      #on crée un sous dataset qui correspond aux infos d'une passe
       if (i==nrow(data)){
         print(i)
         subdata=data[c(j:i),]
@@ -423,7 +423,7 @@ line_match=function(data){
        subdata=data[c(j:i-1),] 
       }
       
-      #on définit parmi les joueurs du freeze frame, ceux qui sont membres de l'équipe adverse et ceux qui font partis de l'équipe du joueur qui        fait la passe
+      #on définit parmi les joueurs du freeze frame, ceux qui sont membres de l'équipe adverse et ceux qui font partis de l'équipe du joueur qui fait la passe
       subdata$teammate[subdata $teammate == "TRUE"]=1
       subdata$teammate[subdata $teammate== "FALSE"]=0
       subdata$teammate=as.character(subdata$teammate)
@@ -464,6 +464,7 @@ line_match=function(data){
 
 ```{r}
 test=line_match(ffs[c(0:256),])
+
 ```
 
 
@@ -471,4 +472,39 @@ test=line_match(ffs[c(0:256),])
 View(test)
 ```
 
+```{r}
 
+# création d'un tableau qui affiche le nombre de joueurs éliminés par chaque joueur lors d'un match 
+
+
+test=line_match(ffs[,])
+
+joueurs = unique(test$player.name)
+joueurs
+
+tab1 <- data.frame(name_passer = joueurs,num_elim_players=0)
+tab1$num_elim_players=as.integer(tab1$num_elim_players)
+
+
+result = tab1[tab1[,"name_passer"]==test[1,"player.name"],"num_elim_players"]
+tab1[tab1[,"name_passer"]==test[1,"player.name"],"num_elim_players"] = result+1
+
+
+for (k in 1:nrow(test)){
+  if (test[k,"broken_line"]==TRUE){
+    result = tab1[tab1[,"name_passer"]==test[k,"player.name"],"num_elim_players"]
+    tab1[tab1[,"name_passer"]==test[k,"player.name"],"num_elim_players"] = result+1
+  }
+  print(k)
+}
+
+tab1
+
+
+# création d'un tableau qui affiche en ordre décroissant le nombre de joueurs éliminés par chaque joueur lors d'un match 
+ 
+newdata <- tab1[order(-num_elim_players),] # tri en fonction de la colonne num_elim_player
+ 
+newdata
+
+```
