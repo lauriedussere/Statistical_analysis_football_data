@@ -244,7 +244,7 @@ France_1=filter(ffs,id=="5ab8ca4a-3626-4e46-8582-914dbe76e173")
 ```
 
 ```{r}
-View(ffs2)
+# View(ffs2)
 ```
 
 
@@ -473,38 +473,245 @@ View(test)
 ```
 
 ```{r}
+# data360 <- StatsBombFree360Events(MatchesDF = Matches[1,1], Parallel = T)    
+#     
+#     events <- StatsBombFreeEvents(MatchesDF = Matches[1,1], Parallel = T)
+#     
+#     events <- allclean(events)
+#     
+#     events <- get.opposingteam(events)
+#     
+#     data360 = data360 %>% rename(id = event_uuid)
+#     
+#     events = events %>% left_join(data360, by = c("id" = "id"))
+#     
+#     events = events %>% rename(match_id = match_id.x) %>% select(-match_id.y)
+#     
+#     # -------------------------------------------
+#     
+#     
+#     ffs = events %>%
+#     group_by(team.name) %>%
+#     filter(type.id==30) %>%
+#     select(id, match_id, team.name, OpposingTeam, 
+#            player.name, type.name,period,timestamp,
+#            location.x, location.y, pass.end_location.x,pass.length,
+#            pass.end_location.y, pass.recipient.name, possession_team.name, freeze_frame,pass.outcome.name,
+#            pass.switch,pass.body_part.name,pass.outcome.name,pass.type.name,pass.height.name,
+#            pass.shot_assist,under_pressure,pass.cross)
+#   #pass.technique.name
+#   
+#     # ffs2=ffs
+#     print (i)
+#     
+#     ffs = ffs %>% unnest(freeze_frame) %>%
+#       mutate(ff_location.x = (map(location, 1)), ff_location.y = (map(location, 2))) %>%
+#       select(-location) %>%
+#       mutate(ff_location.x = as.numeric(ifelse(ff_location.x == "NULL", NA, ff_location.x)),
+#              ff_location.y = as.numeric(ifelse(ff_location.y == "NULL", NA, ff_location.y)))
+# 
+#     # -------------------------------------------
+#     
+#     ffs[is.na(ffs[,"pass.switch"]),"pass.switch"]=FALSE
+#     ffs[is.na(ffs[,"pass.cross"]),"pass.cross"]=FALSE
+#     ffs[is.na(ffs[,"under_pressure"]),"under_pressure"]=FALSE
+#     ffs[is.na(ffs[,"pass.shot_assist"]),"pass.shot_assist"]=FALSE
+#     
+#     ffs[is.na(ffs[,"pass.outcome.name"]),"pass.outcome.name"]="Complete"
+#     #France_1[,"pass.outcome.name"]=factor(France_1[,"pass.outcome.name"])
+#     
+#     ffs[is.na(ffs[,"pass.type.name"]),"pass.type.name"]="Classic"
+#     
+#     ffs=data.frame(ffs)
+
+```
+
+```{r}
 
 # création d'un tableau qui affiche le nombre de joueurs éliminés par chaque joueur lors d'un match 
-
-
-test=line_match(ffs[,])
-
-joueurs = unique(test$player.name)
-joueurs
-
-tab1 <- data.frame(name_passer = joueurs,num_elim_players=0)
-tab1$num_elim_players=as.integer(tab1$num_elim_players)
-
-
-result = tab1[tab1[,"name_passer"]==test[1,"player.name"],"num_elim_players"]
-tab1[tab1[,"name_passer"]==test[1,"player.name"],"num_elim_players"] = result+1
-
-
-for (k in 1:nrow(test)){
-  if (test[k,"broken_line"]==TRUE){
-    result = tab1[tab1[,"name_passer"]==test[k,"player.name"],"num_elim_players"]
-    tab1[tab1[,"name_passer"]==test[k,"player.name"],"num_elim_players"] = result+1
+tab_pass=function(ffs){
+  
+  test=line_match(ffs[,])
+  
+  joueurs = unique(test$player.name)
+  
+  tab1 <- data.frame(name_passer = joueurs,num_elim_players=0)
+  tab1$num_elim_players=as.integer(tab1$num_elim_players)
+  
+  
+  result = tab1[tab1[,"name_passer"]==test[1,"player.name"],"num_elim_players"]
+  tab1[tab1[,"name_passer"]==test[1,"player.name"],"num_elim_players"] = result+1
+  
+  print("avant boucle dans line_match")
+  for (k in 1:nrow(test)){
+    if (test[k,"broken_line"]==TRUE){
+      result = tab1[tab1[,"name_passer"]==test[k,"player.name"],"num_elim_players"]
+      tab1[tab1[,"name_passer"]==test[k,"player.name"],"num_elim_players"] = result+1
+    }
+    print(k)
   }
-  print(k)
+  
+  # tab1
+
+
+  # création d'un tableau qui affiche en ordre décroissant le nombre de joueurs éliminés par chaque joueur lors d'un match 
+   
+  # newdata <- tab1[order(-num_elim_players),] # tri en fonction de la colonne num_elim_player
+  # newdata
+#   return(tab1)
 }
 
-tab1
+```
+
+```{r}
+
+# création d'un tableau qui affiche le nombre de joueurs éliminés par chaque joueur lors d'un match 
+tableau_test = tab_pass(ffs)
+# tableau_test
+
+```
+
+```{r}
+
+# création d'un tableau qui affiche le nombre de joueurs éliminés par chaque joueur lors d'un match 
+join_dataframe=function(data1, data2){
+  joueurs = unique(data1$name_passer)
+  for (k in 1:nrow(data2)){
+    if (is.element(data2$name_passer[k],joueurs)){
+      before_add = data1[data1[,"name_passer"]==data2$name_passer[k],"num_elim_players"]
+      add = data2[k,"num_elim_players"]
+      data1[data1[,"name_passer"]==data2$name_passer[k],"num_elim_players"] = before_add + add
+    }else {
+      data1 = rbind(data1, data2[c(k),])
+    }
+  }
+  
+}
+
+```
 
 
-# création d'un tableau qui affiche en ordre décroissant le nombre de joueurs éliminés par chaque joueur lors d'un match 
- 
-newdata <- tab1[order(-num_elim_players),] # tri en fonction de la colonne num_elim_player
- 
-newdata
+```{r}
+line_breaking_all_matchs=function(Matches,begin=1,end=nrow(Matches)){
+  
+  for (i in begin:end){
+    print ("on regarde le match")
+    
+
+    data360 <- StatsBombFree360Events(MatchesDF = Matches[i,1], Parallel = T)    
+    
+    events <- StatsBombFreeEvents(MatchesDF = Matches[i,1], Parallel = T)
+    
+    events <- allclean(events)
+    
+    events <- get.opposingteam(events)
+    
+    data360 = data360 %>% rename(id = event_uuid)
+    
+    events = events %>% left_join(data360, by = c("id" = "id"))
+    
+    events = events %>% rename(match_id = match_id.x) %>% select(-match_id.y)
+    
+    # -------------------------------------------
+    
+    
+    ffs = events %>%
+    group_by(team.name) %>%
+    filter(type.id==30) %>%
+    select(id, match_id, team.name, OpposingTeam, 
+           player.name, type.name,period,timestamp,
+           location.x, location.y, pass.end_location.x,pass.length,
+           pass.end_location.y, pass.recipient.name, possession_team.name, freeze_frame,pass.outcome.name,
+           pass.switch,pass.body_part.name,pass.outcome.name,pass.type.name,pass.height.name,
+           pass.shot_assist,under_pressure,pass.cross)
+  #pass.technique.name
+  
+    # ffs2=ffs
+    print (i)
+    
+    ffs = ffs %>% unnest(freeze_frame) %>%
+      mutate(ff_location.x = (map(location, 1)), ff_location.y = (map(location, 2))) %>%
+      select(-location) %>%
+      mutate(ff_location.x = as.numeric(ifelse(ff_location.x == "NULL", NA, ff_location.x)),
+             ff_location.y = as.numeric(ifelse(ff_location.y == "NULL", NA, ff_location.y)))
+
+    # -------------------------------------------
+    
+    ffs[is.na(ffs[,"pass.switch"]),"pass.switch"]=FALSE
+    ffs[is.na(ffs[,"pass.cross"]),"pass.cross"]=FALSE
+    ffs[is.na(ffs[,"under_pressure"]),"under_pressure"]=FALSE
+    ffs[is.na(ffs[,"pass.shot_assist"]),"pass.shot_assist"]=FALSE
+    
+    ffs[is.na(ffs[,"pass.outcome.name"]),"pass.outcome.name"]="Complete"
+    #France_1[,"pass.outcome.name"]=factor(France_1[,"pass.outcome.name"])
+    
+    ffs[is.na(ffs[,"pass.type.name"]),"pass.type.name"]="Classic"
+    
+    ffs=data.frame(ffs)
+        
+    # -------------------------------------------
+    
+    # if (ffs2[1,"location.x"]-ffs2[1,"pass.end_location.x"]>0){
+    #   team_left_first_half=as.character(ffs2[1,"team.name"])
+    #   team_right_first_half=as.character(ffs2[1,"OpposingTeam"])
+    # }
+    # if  (ffs2[1,"location.x"]-ffs2[1,"pass.end_location.x"]<0) {
+    #   team_left_first_half=as.character(ffs2[1,"OpposingTeam"])
+    #   team_right_first_half=as.character(ffs2[1,"team.name"])
+    # }
+    # 
+    # team_left_second_half=team_right_first_half
+    # team_right_second_half=team_left_first_half
+    # 
+    # 
+    # team_left_first_half
+    # team_right_first_half
+    # 
+    # team_left_second_half
+    # team_right_second_half
+    # 
+    # 
+    # ffs2=ffs
+    
+    #on inverse les positions pour l'affichage
+    
+    # ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),][,"location.x"]=120.0-ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),"location.x"]
+    # ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),][,"pass.end_location.x"]=120.0-ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),"pass.end_location.x"]
+    # ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),][,"ff_location.x"]=120.0-ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),"ff_location.x"]
+    # 
+    # ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),][,"location.x"]=120.0-ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),"location.x"]
+    # ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),][,"pass.end_location.x"]=120.0-ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),"pass.end_location.x"]
+    # ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),][,"ff_location.x"]=120.0-ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),"ff_location.x"]
+    # 
+    # #inverse les coordonnées du y car le 0 est en haut à gauche
+    # ffs2[,"ff_location.y"]=80.0-ffs2[,"ff_location.y"]
+    # ffs2[,"location.y"]=80.0-ffs2[,"location.y"]
+    # ffs2[,"pass.end_location.y"]=80.0-ffs2[,"pass.end_location.y"]
+    
+    # -------------------------------------------
+    
+    # -------------------------------------------
+    print("on est avant la boucle")
+    if (i == 1){
+      print("on rentre dans la première boucle")
+      recap = tab_pass(ffs)
+      
+    }else{
+      num_eliminated_player_for_this_match = tab_pass(ffs)
+      join_dataframe(recap,num_eliminated_player_for_this_match)
+    }
+    
+    
+    
+  }
+  recap
+}
+
+```
+
+
+```{r}
+
+line_breaking_all_matchs(Matches,1,3)
 
 ```
