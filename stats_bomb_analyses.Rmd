@@ -63,6 +63,8 @@ ffs = ffs %>% unnest(freeze_frame) %>%
   select(-location) %>%
   mutate(ff_location.x = as.numeric(ifelse(ff_location.x == "NULL", NA, ff_location.x)),
          ff_location.y = as.numeric(ifelse(ff_location.y == "NULL", NA, ff_location.y)))
+
+
 ```
 
 ```{r}
@@ -724,6 +726,13 @@ line_breaking_all_matchs=function(Matches,begin=1,end=nrow(Matches)){
 ```{r}
 
 Tab_recap = line_breaking_all_matchs(Matches,1,20)
+<<<<<<< HEAD
+
+
+Tab_recap_ordered <- arrange(Tab_recap, desc(num_elim_players))
+Tab_recap_ordered
+=======
+>>>>>>> e136ce1d093978a016d709a0e1ca994d487ad203
 
 
 Tab_recap_ordered <- arrange(Tab_recap, desc(num_elim_players))
