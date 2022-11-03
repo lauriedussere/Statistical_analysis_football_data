@@ -1,0 +1,391 @@
+---
+title: "clusters_stats_bomb"
+author: "laurie dussere"
+date: '2022-11-03'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+devtools::install_github("statsbomb/StatsBombR")
+'https://statsbomb.com/news/statsbomb-announce-the-release-of-free-statsbomb-360-data-euro-2020-available-now/'
+```
+
+```{r warning=FALSE}
+library (StatsBombR)
+library(ggplot2)
+library(ggmosaic)
+library(dplyr)
+library(tidyverse)
+library(cowplot)
+library(BAMMtools)
+#library(rgdal)
+#library(GmAMisc)
+library(factoextra)
+library(meanShiftR)
+```
+
+```{r message=FALSE}
+Comp <- FreeCompetitions()
+
+Matches <- FreeMatches(Comp)
+
+Matches = Matches %>% filter(competition.competition_name=="UEFA Euro")
+
+data360 <- StatsBombFree360Events(MatchesDF = Matches[45,1], Parallel = T)    #[45,1]
+
+events <- StatsBombFreeEvents(MatchesDF = Matches[45,1], Parallel = T)
+
+events <- allclean(events)
+
+events <- get.opposingteam(events)
+
+data360 = data360 %>% rename(id = event_uuid)
+
+events = events %>% left_join(data360, by = c("id" = "id"))
+
+events = events %>% rename(match_id = match_id.x) %>% select(-match_id.y)
+
+```
+
+```{r}
+ffs = events %>%
+  group_by(team.name) %>%
+  filter(type.id==30) %>%
+  select(id, match_id, team.name, OpposingTeam, 
+         player.name, type.name,period,timestamp,
+         location.x, location.y, pass.end_location.x,pass.length,
+         pass.end_location.y, pass.recipient.name, possession_team.name, freeze_frame,pass.outcome.name,pass.switch,pass.body_part.name,pass.outcome.name,pass.type.name,pass.height.name,pass.shot_assist,under_pressure,pass.cross)
+#pass.technique.name
+
+ffs2=ffs
+
+ffs = ffs %>% unnest(freeze_frame) %>%
+  mutate(ff_location.x = (map(location, 1)), ff_location.y = (map(location, 2))) %>%
+  select(-location) %>%
+  mutate(ff_location.x = as.numeric(ifelse(ff_location.x == "NULL", NA, ff_location.x)),
+         ff_location.y = as.numeric(ifelse(ff_location.y == "NULL", NA, ff_location.y)))
+```
+
+```{r}
+ffs[is.na(ffs[,"pass.switch"]),"pass.switch"]=FALSE
+ffs[is.na(ffs[,"pass.cross"]),"pass.cross"]=FALSE
+ffs[is.na(ffs[,"under_pressure"]),"under_pressure"]=FALSE
+ffs[is.na(ffs[,"pass.shot_assist"]),"pass.shot_assist"]=FALSE
+
+ffs[is.na(ffs[,"pass.outcome.name"]),"pass.outcome.name"]="Complete"
+#France_1[,"pass.outcome.name"]=factor(France_1[,"pass.outcome.name"])
+
+ffs[is.na(ffs[,"pass.type.name"]),"pass.type.name"]="Classic"
+
+ffs=data.frame(ffs)
+```
+
+
+```{r}
+# on détermine quel joueur joue à gauche où à droite
+#sinon on peut prendre direct teamname
+if (ffs2[1,"location.x"]-ffs2[1,"pass.end_location.x"]>0){
+  team_left_first_half=as.character(ffs2[1,"team.name"])
+  team_right_first_half=as.character(ffs2[1,"OpposingTeam"])
+}
+if  (ffs2[1,"location.x"]-ffs2[1,"pass.end_location.x"]<0) {
+  team_left_first_half=as.character(ffs2[1,"OpposingTeam"])
+  team_right_first_half=as.character(ffs2[1,"team.name"])
+}
+
+team_left_second_half=team_right_first_half
+team_right_second_half=team_left_first_half
+
+
+team_left_first_half
+team_right_first_half
+
+team_left_second_half
+team_right_second_half
+
+
+ffs2=ffs
+
+#on inverse les positions pour l'affichage
+ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),][,"location.x"]=120.0-ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),"location.x"]
+ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),][,"pass.end_location.x"]=120.0-ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),"pass.end_location.x"]
+ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),][,"ff_location.x"]=120.0-ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),"ff_location.x"]
+
+ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),][,"location.x"]=120.0-ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),"location.x"]
+ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),][,"pass.end_location.x"]=120.0-ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),"pass.end_location.x"]
+ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),][,"ff_location.x"]=120.0-ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),"ff_location.x"]
+
+#inverse les coordonnées du y car le 0 est en haut à gauche
+ffs2[,"ff_location.y"]=80.0-ffs2[,"ff_location.y"]
+ffs2[,"location.y"]=80.0-ffs2[,"location.y"]
+ffs2[,"pass.end_location.y"]=80.0-ffs2[,"pass.end_location.y"]
+```
+
+```{r}
+# fonction pour afficher une passe
+#on choisit la passe que l'on veut afficher
+display_passes.id <- function(idtf){
+data<-filter(ffs2,id==idtf)
+
+#on définit parmi les joueurs du freeze frame, ceux qui sont membres de l'équipe adverse et ceux qui font partis de l'équipe du joueur qui fait la passe
+data$teammate[data $teammate == "TRUE"]=1
+data$teammate[data $teammate== "FALSE"]=0
+data$teammate=as.character(data$teammate)
+
+i=1
+for (i in 1:nrow(data)){
+  if (data[i,"teammate"]==1){
+      data[i,"teammate"]=data[i,"team.name"]
+  }
+  else{
+    data[i,"teammate"]=data[i,"OpposingTeam"]
+  }
+}
+
+if (data[1,"period"]==1){
+  team_left=team_left_first_half
+  team_right=team_right_first_half
+}
+else{
+  team_left=team_left_second_half
+  team_right=team_right_second_half
+  
+}
+
+# on complète les données manquantes
+data[is.na(data[,"pass.switch"]),"pass.switch"]=FALSE
+data[is.na(data[,"pass.cross"]),"pass.cross"]=FALSE
+data[is.na(data[,"under_pressure"]),"under_pressure"]=FALSE
+data[is.na(data[,"pass.shot_assist"]),"pass.shot_assist"]=FALSE
+
+data[is.na(data[,"pass.outcome.name"]),"pass.outcome.name"]="Complete"
+#France_1[,"pass.outcome.name"]=factor(France_1[,"pass.outcome.name"])
+
+data[is.na(data[,"pass.type.name"]),"pass.type.name"]="Classic"
+#France_1[i,"pass.type.name"]= factor(France_1[,"pass.type.name"])
+
+pass_player=which(data[,"actor"]=="TRUE")
+pass_player=data[pass_player,]
+
+  #version zoomée
+  p1=ggplot(data, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),color=team.name),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")+
+  xlim(0, 120)+
+  ylim(0, 80)+
+  annotate("text", x = 15, y = 3, label =team_left)+
+  annotate("text", x = 100, y = 80, label =team_right)+
+  ggtitle("version zoomée")
+
+
+# on affiche la passe (version terrain complet)
+
+  p2=ggplot(data, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),color=team.name),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")+
+  ggtitle("terrain complet")
+  
+  plot_grid(p1,p2)
+  
+}
+```
+
+```{r}
+# fonction pour afficher une passe en fonction du cluster
+display_cluster <- function(data){
+  
+  if (data[1,"period"]==1){
+  team_left=team_left_first_half
+  team_right=team_right_first_half
+}
+else{
+  team_left=team_left_second_half
+  team_right=team_right_second_half
+  
+}
+
+  pass_player=which(data[,"actor"]=="TRUE")
+  pass_player=data[pass_player,]
+
+  #version zoomée
+  p1=ggplot(data, aes(x=ff_location.x, y=ff_location.y, label= num_line))+
+  geom_point(aes(color=num_line))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  #geom_point(aes(x=location.x , y=location.y),color="pu")+
+  #geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"])),size=4)+
+  #geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")+
+  xlim(0, 120)+
+  ylim(0, 80)+
+  annotate("text", x = 15, y = 3, label =team_left)+
+  annotate("text", x = 100, y = 80, label =team_right)+
+  ggtitle("version zoomée")
+
+
+# on affiche la passe (version terrain complet)
+
+  p2=ggplot(data, aes(x=ff_location.x, y=ff_location.y, label= num_line))+
+  geom_point(aes(color=num_line))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  #geom_point(aes(x=location.x , y=location.y),color="purple")+
+  #geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"])),size=4)+
+  #geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")+
+  ggtitle("terrain complet")
+  
+  plot_grid(p1,p2)
+  
+}
+```
+
+# Etude d'une passe 
+
+```{r}
+#France_1<-filter(ffs,id=="22612d6c-6e85-48ac-b4cd-4ba1f57b81ed") #passe intéressante 10 joueurs
+#France_1<-filter(ffs,id=="7be2161b-9a2f-430d-b8db-9149c930990a")
+#France_1<-filter(ffs,id=="2dc392ac-47cf-4871-adfb-53384a2e5a5d") 
+France_1<-filter(ffs,id=="1beb436e-5702-4a3d-8f06-7f37edfbc596")
+#France_1<-filter(ffs,id=="7f2ef6ee-7fb8-4efd-bdeb-e033edecc517")
+```
+
+```{r}
+#on définit parmi les joueurs du freeze frame, ceux qui sont membres de l'équipe adverse et ceux qui font partis de l'équipe du joueur qui fait la passe
+France_1$teammate[France_1 $teammate == "TRUE"]=1
+France_1$teammate[France_1 $teammate== "FALSE"]=0
+France_1$teammate=as.character(France_1$teammate)
+
+i=1
+for (i in 1:nrow(France_1)){
+  if (France_1[i,"teammate"]==1){
+      France_1[i,"teammate"]=France_1[i,"team.name"]
+  }
+  else{
+    France_1[i,"teammate"]=France_1[i,"OpposingTeam"]
+  }
+}
+```
+
+```{r warning=FALSE}
+# on complète les données manquantes
+France_1[is.na(France_1[,"pass.switch"]),"pass.switch"]=FALSE
+France_1[is.na(France_1[,"pass.cross"]),"pass.cross"]=FALSE
+France_1[is.na(France_1[,"under_pressure"]),"under_pressure"]=FALSE
+France_1[is.na(France_1[,"pass.shot_assist"]),"pass.shot_assist"]=FALSE
+
+France_1[is.na(France_1[,"pass.outcome.name"]),"pass.outcome.name"]="Complete"
+#France_1[,"pass.outcome.name"]=factor(France_1[,"pass.outcome.name"])
+
+France_1[is.na(France_1[,"pass.type.name"]),"pass.type.name"]="Classic"
+#France_1[i,"pass.type.name"]= factor(France_1[,"pass.type.name"])
+```
+
+
+```{r fig.height=8}
+display_passes.id("7f2ef6ee-7fb8-4efd-bdeb-e033edecc517")
+```
+
+# Méthode de clustering pour classer les individus en fonction de la ligne à laquelle ils appartiennent
+
+On ne veut faire des clusters que des joueurs de l'équipe adversaire donc on ne garde que les joueurs dont le teammate et différent du teamname.
+
+```{r}
+#fonction qui compte combien de joueurs de l'équipe adverse sont "éliminés" par la passe
+eliminated_player=function(data){
+  player=which((data[,"teammate"]!=data[,"team.name"]) & (data[,"ff_location.x"]<data[,"pass.end_location.x"]) & (data[,"ff_location.x"]>data[,"location.x"]))
+  return (data[player,])
+}
+```
+
+```{r}
+eliminated_player(France_1)
+```
+
+
+```{r}
+create.line <- function(data){
+  
+  #dataframe qui contient toutes les caracteristiques des joueurs éliminés par la passe
+  elim_players=eliminated_player(data)
+  
+  data_cluster=elim_players
+  
+  #on crée un nouveau dataframe qui contient une colonne supplémentaire
+  #afin d'identifier les lignes auxquelles appartiennent les joueurs
+  df=cbind(data,rep("no_line",nrow(data)))
+  colnames(df)[ncol(df)]="num_line"
+  
+  # si il y a plus de 4 joueurs de l'équipe adverse éliminés, alors on définit 4 clusters
+  if (nrow(elim_players)>= 4) {
+    position = getJenksBreaks(data_cluster[,"ff_location.x"],4, subset = NULL)
+    
+    #on crée le dataframe qui contient les indications à propos des clusters
+    cluster1 = data_cluster[data_cluster[,"ff_location.x"]<=position[2],]
+    cluster1 = cbind(cluster1,rep(1,nrow(cluster1)))
+    colnames(cluster1)[ncol(cluster1)] = "num_line"
+
+    cluster2 = data_cluster[data_cluster[,"ff_location.x"]>position[2] & data_cluster[,"ff_location.x"]<=position[3],]
+    cluster2 = cbind(cluster2,rep(2,nrow(cluster2)))
+    colnames(cluster2)[ncol(cluster2)] = "num_line"
+    
+    cluster3=data_cluster[data_cluster[,"ff_location.x"]>position[3],]
+    cluster3 = cbind(cluster3,rep(3,nrow(cluster3)))
+    colnames(cluster3)[ncol(cluster3)] = "num_line"
+    
+    df=merge(cluster1,cluster2,all=TRUE)
+    df=merge(df,cluster3,all=TRUE)
+  
+  }
+  
+    # si il y a plus de 4 joueurs de l'équipe adverse éliminés, alors on définit 4 clusters
+  if (nrow(elim_players) == 3) {
+    position = getJenksBreaks(data_cluster[,"ff_location.x"],3, subset = NULL)
+    
+    #on crée le dataframe qui contient les indications à propos des clusters
+    cluster1 = data_cluster[data_cluster[,"ff_location.x"]<=position[2],]
+    cluster1 = cbind(cluster1,rep(1,nrow(cluster1)))
+    colnames(cluster1)[ncol(cluster1)] = "num_line"
+
+    cluster2 = data_cluster[data_cluster[,"ff_location.x"]>position[2],]
+    cluster2 = cbind(cluster2,rep(2,nrow(cluster2)))
+    colnames(cluster2)[ncol(cluster2)] = "num_line"
+    
+    df=merge(cluster1,cluster2,all=TRUE)
+  
+  }
+  
+  # si on a que 2 individus éliminés pas besoin de méthode de clustering, on regarde direct si ils sont distants de moins de 3 m.
+  if (nrow(elim_players)== 2){
+    df = cbind(data_cluster,rep(0,nrow(data_cluster)))
+    colnames(df)[ncol(df)] = "num_line"
+    if (abs(elim_players[1,"ff_location.x"]-elim_players[2,"ff_location.x"]) <= 3){
+      df[c(1,2),"num_line"] = 1
+    }
+  }
+  
+  return(df)
+}
+```
+
+```{r}
+line_information = create.line(France_1)
+France_complete=merge(line_information,France_1,all=TRUE)
+France_complete[is.na(France_complete[,"num_line"]),"num_line"]=0
+France_complete[France_complete[,"teammate"]==France_complete[,"team.name"],"num_line"]="teammate"
+France_complete[,"num_line"]=factor(France_complete[,"num_line"])
+```
+
+```{r fig.height=8}
+display_cluster(France_complete)
+```
+
+
+on affiche les joueurs sur le terrain en fonction du cluster auxquels ils appartiennent
+
