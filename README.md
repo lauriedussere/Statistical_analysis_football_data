@@ -1,6 +1,6 @@
 # Statistical analysis of football data
 
-Nowadays, football clubs often use statistical tools to evaluate the performance of team players but also to determine the strategies for future matches.
+Nowadays, football clubs often use statistical tools to evaluate the performance of players but also to determine the strategies for future matches.
 The goal of this project is to identify new performance indicators for football players and football teams.
 
 We used data from the website https://statsbomb.com/ which gives a free access to football data concerning all matches from a competition (Euro 2020). Data decsribe all actions which happenned during a match. The actions are characterized by several variables such as : 
