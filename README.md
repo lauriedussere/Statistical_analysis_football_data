@@ -10,5 +10,5 @@ We used data from the website https://statsbomb.com/ which gives a free access t
 - characteristics of the action : for example if it is a pass we know the angle, the length, if it is completed or not...
 - freeze frame : it is a picture of an exact moment of a match, which allows us to know the exact position of the player in possession of the ball but also the position of all the other players that are on the camera range at time of the action. 
 
-More precisely, our work focused on studying the passes and identifying the ones that break lines of players. By identifying the line breaking passes, we were able to evaluate the performance of each player. To evaluate the performance we took into account the number of lines he broke during a match (and more generally a competition) but also by counting the number of players eliminated by his passes. 
+More precisely, our work focused on studying the passes and identifying the ones that break lines of players. By identifying the line breaking passes, we were able to evaluate the performance of each player. To evaluate the performance we took into account the number of lines the player broke during a match (and more generally a competition) but also by counting the number of players eliminated by his passes. 
  
