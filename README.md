@@ -1,4 +1,4 @@
-# Statistical_analysis_football_data
+# Statistical analysis of football data
 
 Nowadays, football clubs often use statistical tools to evaluate the performance of team players but also to determine the strategies for future matches.
 The goal of this project is to identify new performance indicators for football players and football teams.
