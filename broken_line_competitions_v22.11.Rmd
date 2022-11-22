@@ -1,0 +1,1016 @@
+---
+title: "stats_bomb_analyses"
+author: "laurie dussere"
+date: '2022-10-18'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+devtools::install_github("statsbomb/StatsBombR")
+'https://statsbomb.com/news/statsbomb-announce-the-release-of-free-statsbomb-360-data-euro-2020-available-now/'
+```
+
+```{r warning=FALSE}
+library (StatsBombR)
+library(ggplot2)
+library(ggmosaic)
+library(dplyr)
+library(tidyverse)
+library(cowplot)
+```
+
+```{r message=FALSE}
+Comp <- FreeCompetitions()
+
+Matches <- FreeMatches(Comp)
+
+Matches = Matches %>% filter(competition.competition_name=="UEFA Euro")
+
+data360 <- StatsBombFree360Events(MatchesDF = Matches[45,1], Parallel = T)    #[45,1]
+
+events <- StatsBombFreeEvents(MatchesDF = Matches[45,1], Parallel = T)
+
+events <- allclean(events)
+
+events <- get.opposingteam(events)
+
+data360 = data360 %>% rename(id = event_uuid)
+
+events = events %>% left_join(data360, by = c("id" = "id"))
+
+events = events %>% rename(match_id = match_id.x) %>% select(-match_id.y)
+```
+
+```{r}
+ffs = events %>%
+  group_by(team.name) %>%
+  filter(type.id==30) %>%
+  select(id, match_id, team.name, OpposingTeam, 
+         player.name, type.name,period,timestamp,
+         location.x, location.y, pass.end_location.x,pass.length,
+         pass.end_location.y, pass.recipient.name, possession_team.name, freeze_frame,pass.outcome.name,pass.switch,pass.body_part.name,pass.outcome.name,pass.type.name,pass.height.name,pass.shot_assist,under_pressure,pass.cross)
+#pass.technique.name
+
+ffs2=ffs
+
+ffs = ffs %>% unnest(freeze_frame) %>%
+  mutate(ff_location.x = (map(location, 1)), ff_location.y = (map(location, 2))) %>%
+  select(-location) %>%
+  mutate(ff_location.x = as.numeric(ifelse(ff_location.x == "NULL", NA, ff_location.x)),
+         ff_location.y = as.numeric(ifelse(ff_location.y == "NULL", NA, ff_location.y)))
+
+
+```
+
+```{r}
+ffs[is.na(ffs[,"pass.switch"]),"pass.switch"]=FALSE
+ffs[is.na(ffs[,"pass.cross"]),"pass.cross"]=FALSE
+ffs[is.na(ffs[,"under_pressure"]),"under_pressure"]=FALSE
+ffs[is.na(ffs[,"pass.shot_assist"]),"pass.shot_assist"]=FALSE
+
+ffs[is.na(ffs[,"pass.outcome.name"]),"pass.outcome.name"]="Complete"
+#France_1[,"pass.outcome.name"]=factor(France_1[,"pass.outcome.name"])
+
+ffs[is.na(ffs[,"pass.type.name"]),"pass.type.name"]="Classic"
+
+ffs=data.frame(ffs)
+```
+
+
+```{r}
+# on détermine quel joueur joue à gauche où à droite
+#sinon on peut prendre direct teamname
+if (ffs2[1,"location.x"]-ffs2[1,"pass.end_location.x"]>0){
+  team_left_first_half=as.character(ffs2[1,"team.name"])
+  team_right_first_half=as.character(ffs2[1,"OpposingTeam"])
+}
+if  (ffs2[1,"location.x"]-ffs2[1,"pass.end_location.x"]<0) {
+  team_left_first_half=as.character(ffs2[1,"OpposingTeam"])
+  team_right_first_half=as.character(ffs2[1,"team.name"])
+}
+
+team_left_second_half=team_right_first_half
+team_right_second_half=team_left_first_half
+
+
+team_left_first_half
+team_right_first_half
+
+team_left_second_half
+team_right_second_half
+
+
+ffs2=ffs
+
+#on inverse les positions pour l'affichage
+ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),][,"location.x"]=120.0-ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),"location.x"]
+ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),][,"pass.end_location.x"]=120.0-ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),"pass.end_location.x"]
+ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),][,"ff_location.x"]=120.0-ffs2[which(ffs2[,"period"]==1 & ffs2[,"team.name"]==team_right_first_half),"ff_location.x"]
+
+ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),][,"location.x"]=120.0-ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),"location.x"]
+ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),][,"pass.end_location.x"]=120.0-ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),"pass.end_location.x"]
+ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),][,"ff_location.x"]=120.0-ffs2[which(ffs2[,"period"]==2 & ffs2[,"team.name"]==team_right_second_half),"ff_location.x"]
+
+#inverse les coordonnées du y car le 0 est en haut à gauche
+ffs2[,"ff_location.y"]=80.0-ffs2[,"ff_location.y"]
+ffs2[,"location.y"]=80.0-ffs2[,"location.y"]
+ffs2[,"pass.end_location.y"]=80.0-ffs2[,"pass.end_location.y"]
+```
+```{r}
+# fonction pour afficher une passe
+#on choisit la passe que l'on veut afficher
+display_passes <- function(idtf){
+data<-filter(ffs2,id==idtf)
+
+#on définit parmi les joueurs du freeze frame, ceux qui sont membres de l'équipe adverse et ceux qui font partis de l'équipe du joueur qui fait la passe
+data$teammate[data $teammate == "TRUE"]=1
+data$teammate[data $teammate== "FALSE"]=0
+data$teammate=as.character(data$teammate)
+
+i=1
+for (i in 1:nrow(data)){
+  if (data[i,"teammate"]==1){
+      data[i,"teammate"]=data[i,"team.name"]
+  }
+  else{
+    data[i,"teammate"]=data[i,"OpposingTeam"]
+  }
+}
+
+if (data[1,"period"]==1){
+  team_left=team_left_first_half
+  team_right=team_right_first_half
+}
+else{
+  team_left=team_left_second_half
+  team_right=team_right_second_half
+  
+}
+
+# on complète les données manquantes
+data[is.na(data[,"pass.switch"]),"pass.switch"]=FALSE
+data[is.na(data[,"pass.cross"]),"pass.cross"]=FALSE
+data[is.na(data[,"under_pressure"]),"under_pressure"]=FALSE
+data[is.na(data[,"pass.shot_assist"]),"pass.shot_assist"]=FALSE
+
+data[is.na(data[,"pass.outcome.name"]),"pass.outcome.name"]="Complete"
+#France_1[,"pass.outcome.name"]=factor(France_1[,"pass.outcome.name"])
+
+data[is.na(data[,"pass.type.name"]),"pass.type.name"]="Classic"
+#France_1[i,"pass.type.name"]= factor(France_1[,"pass.type.name"])
+
+pass_player=which(data[,"actor"]=="TRUE")
+pass_player=data[pass_player,]
+
+  #version zoomée
+  p1=ggplot(data, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),color=team.name),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")+
+  xlim(0, 120)+
+  ylim(0, 80)+
+  annotate("text", x = 15, y = 3, label =team_left)+
+  annotate("text", x = 100, y = 80, label =team_right)+
+  ggtitle("version zoomée")
+
+
+# on affiche la passe (version terrain complet)
+
+  p2=ggplot(data, aes(x=ff_location.x, y=ff_location.y, label= teammate))+
+  geom_point(aes(color=teammate))+
+  geom_segment(aes(x=location.x ,y=location.y,xend=pass.end_location.x,yend=pass.end_location.y))+
+  geom_point(aes(x=location.x , y=location.y),color="purple")+
+  geom_point(aes(x=unlist(pass_player[,"ff_location.x"]),y=unlist(pass_player[,"ff_location.y"]),color=team.name),size=4)+
+  geom_point(aes(x=pass.end_location.x , y=pass.end_location.y), color="green")+
+  ggtitle("terrain complet")
+  
+  plot_grid(p1,p2)
+  
+}
+```
+
+# Etude d'une passe
+
+```{r}
+#France_1<-filter(ffs,id=="22612d6c-6e85-48ac-b4cd-4ba1f57b81ed") #passe intéressante 10 joueurs
+#France_1<-filter(ffs,id=="7be2161b-9a2f-430d-b8db-9149c930990a")
+#France_1<-filter(ffs,id=="2dc392ac-47cf-4871-adfb-53384a2e5a5d") 
+#France_1<-filter(ffs,id=="42cf0125-d9ab-4506-9bf0-be2b0a0832a7")
+France_1<-filter(ffs,id=="4b5d2fea-13f1-4242-9442-52d46c31abe4")
+
+
+```
+
+```{r}
+#on définit parmi les joueurs du freeze frame, ceux qui sont membres de l'équipe adverse et ceux qui font partis de l'équipe du joueur qui fait la passe
+France_1$teammate[France_1 $teammate == "TRUE"]=1
+France_1$teammate[France_1 $teammate== "FALSE"]=0
+France_1$teammate=as.character(France_1$teammate)
+
+i=1
+for (i in 1:nrow(France_1)){
+  if (France_1[i,"teammate"]==1){
+      France_1[i,"teammate"]=France_1[i,"team.name"]
+  }
+  else{
+    France_1[i,"teammate"]=France_1[i,"OpposingTeam"]
+  }
+}
+```
+
+```{r warning=FALSE}
+# on complète les données manquantes
+France_1[is.na(France_1[,"pass.switch"]),"pass.switch"]=FALSE
+France_1[is.na(France_1[,"pass.cross"]),"pass.cross"]=FALSE
+France_1[is.na(France_1[,"under_pressure"]),"under_pressure"]=FALSE
+France_1[is.na(France_1[,"pass.shot_assist"]),"pass.shot_assist"]=FALSE
+
+France_1[is.na(France_1[,"pass.outcome.name"]),"pass.outcome.name"]="Complete"
+#France_1[,"pass.outcome.name"]=factor(France_1[,"pass.outcome.name"])
+
+France_1[is.na(France_1[,"pass.type.name"]),"pass.type.name"]="Classic"
+#France_1[i,"pass.type.name"]= factor(France_1[,"pass.type.name"])
+```
+
+
+```{r fig.height=8}
+display_passes("4b5d2fea-13f1-4242-9442-52d46c31abe4")
+```
+
+```{r}
+#France_1=filter(ffs,id=="22612d6c-6e85-48ac-b4cd-4ba1f57b81ed")
+```
+
+```{r}
+# View(ffs2)
+```
+
+
+
+# test pour la fonction de break_line
+
+```{r}
+#fonction qui compte combien de joueurs de l'équipe adverse sont "éliminés" par la passe
+eliminated_player=function(data){
+  player=which((data[,"teammate"]!=data[,"team.name"]) & (data[,"ff_location.x"]<data[,"pass.end_location.x"]) & (data[,"ff_location.x"]>data[,"location.x"]))
+  return (data[player,])
+}
+
+# fonction qui permet de déterminer si 2 segments se croisent
+ccw=function(A,B,C)
+{
+  return ((C[2]-A[2])*(B[1]-A[1])>(B[2]-A[2])*(C[1]-A[1]))
+}
+do_intersec=function(player1,player2,pass.start,pass.end){
+  return (ccw(player1,pass.start,pass.end) != ccw(player2,pass.start,pass.end) & ccw(player1,player2,pass.start)!= ccw(player1,player2,pass.end))
+}
+
+#compte le nombre de joueurs de l'équipe adversaire qui se situe entre la fin de la passe et le but
+player_forward=function(data){
+  player=which((data[,"teammate"]!=data[,"team.name"]) & (data[,"ff_location.x"]> data[,"pass.end_location.x"]))
+  return (nrow(data[player,]))
+}
+```
+
+```{r}
+player_forward(France_1)
+```
+
+
+
+```{r}
+#nombre de joueur éliminés par la passe
+players_elim=(eliminated_player(France_1))
+players_elim=players_elim %>% arrange((ff_location.x))
+players_elim=data.frame(players_elim)
+players_elim
+```
+
+```{r}
+break_line=function(data,x_dist,y_dist,pass.length){
+  
+  France_1_bis=data.frame(data)
+  
+  France_1_bis = cbind(France_1_bis,rep(data[,"pass.end_location.x"]-data[,"location.x"],1))
+  colnames(France_1_bis)[ncol(France_1_bis)] = "length_gain"
+  
+  France_1_bis = cbind(France_1_bis,rep(player_forward(data),nrow(France_1_bis)))
+  colnames(France_1_bis)[ncol(France_1_bis)] = "nb_players_forward"
+  
+  players_elim=eliminated_player(data)
+  players_elim=players_elim %>% arrange((ff_location.x))
+  players_elim=data.frame(players_elim)
+  
+  France_1_bis = cbind(France_1_bis,rep(nrow(players_elim),nrow(France_1_bis)))
+  colnames(France_1_bis)[ncol(France_1_bis)] = "eliminated_players"
+  
+  France_1_bis <- data.frame(France_1_bis, pass_broke_line = 0)
+  
+  
+  if (nrow(players_elim)==0){
+    France_1_bis=cbind(France_1_bis,rep("no_line",nrow(France_1_bis)))
+    colnames(France_1_bis)[ncol(France_1_bis)]="num_line"
+    France_1_bis=cbind(France_1_bis,rep(FALSE,nrow(France_1_bis)))
+    colnames(France_1_bis)[ncol(France_1_bis)]="broken_line"
+  }
+  
+  else{
+  
+  line_broken=FALSE
+  i=1
+  line=0
+  vector_broken=c()
+  num_line=0
+  
+  #on rajoute une colonne qui dit si le joueur éliminé appartient à une ligne
+  new_elim_players=cbind(players_elim,rep("no_line",nrow(players_elim)))
+  colnames(new_elim_players)[ncol(new_elim_players)]="num_line"
+  # on rajoute une colonne qui dit si la ligne auqeuelle appartient le joueur a été cassée ou non 
+    new_elim_players=cbind(new_elim_players,rep(FALSE,nrow(new_elim_players)))
+    colnames(new_elim_players)[ncol(new_elim_players)]="broken_line"
+  
+  
+  if (data[1,"pass.outcome.name"]=="Complete" & data[1,"pass.length"]>pass.length){
+    if (nrow(players_elim)>=2){
+      for (i in (1:(nrow(players_elim)-1))){
+        
+        #si on a déja trouvé 
+          if (line==1){
+             i=j
+           }
+          line=0
+          
+          
+          for (j in (nrow(players_elim):(i+1))){
+
+            
+            if (abs(players_elim[i,"ff_location.x"]-players_elim[j,"ff_location.x"])<x_dist){
+              line=1
+              num_line=num_line+1
+              
+              if (new_elim_players[i,"num_line"]!="no_line"){
+                new_elim_players[seq(i,j, by = 1),"num_line"]=paste(new_elim_players[i,"num_line"],"+ line" ,num_line)
+                }
+               else {new_elim_players[seq(i,j, by = 1),"num_line"]=paste("line" ,num_line)}
+              
+               
+              
+              new_elim_players[seq(i,j, by = 1),"num_line"]=paste("line" ,num_line)
+              
+              if (abs(players_elim[i,"ff_location.y"]-players_elim[j,"ff_location.y"])>y_dist){
+              player1=c(players_elim[i,"ff_location.x"],players_elim[i,"ff_location.y"])
+              player2=c(players_elim[j,"ff_location.x"],players_elim[j,"ff_location.y"])
+              pass.start=c(players_elim[i,"location.x"],players_elim[i,"location.y"])
+              pass.end=c(players_elim[j,"pass.end_location.x"],players_elim[j,"pass.end_location.y"])
+
+              line_broken=do_intersec(player1,player2,pass.start,pass.end)
+              if (line_broken == TRUE) {
+                France_1_bis[, "pass_broke_line"] = rep(1, nrow(France_1_bis))
+              }
+              
+              #on rajoute un booléan pour dire si la ligne est cassée ou non 
+              new_elim_players[seq(i,j, by = 1),"broken_line"]=line_broken
+              
+              
+              vector_broken=append(vector_broken,line_broken,after=length(vector_broken))
+              
+
+              
+              
+              break
+            }
+              
+              
+            } 
+          }
+          if (j==nrow(players_elim)){
+              break
+          }
+        
+        if (i==nrow(players_elim)-1)
+        {break}
+       }
+      }
+
+
+  }
+  
+  #on rajoute les infos dans le dataset complet
+  France_1_bis=merge(France_1_bis,new_elim_players,all=TRUE)
+  
+  }
+  
+  France_1_bis[is.na(France_1_bis$num_line),"num_line"]="no_line"
+  France_1_bis[is.na(France_1_bis$broken_line),"broken_line"]="FALSE"
+  
+  info.elim = info.elim[info.elim[,"broken_line"]==TRUE,]
+  nombre_ligne = length(unique(info.elim$num_line))
+  
+  France_1_bis[,'nb_broken_line'] = rep(nombre_ligne,nrow(France_1_bis))
+  
+  return (France_1_bis)
+  }
+```
+
+```{r}
+info.elim=break_line(France_1,3,8,10)
+info.elim
+```
+
+# On applique maintenant la fonction à toutes les passes d'un match
+
+```{r}
+line_match=function(data){
+  i=2
+  j=1
+  
+  #on crée une copie du dataframe original auquel on ajoute 2 colonnes
+  dff=data
+  dff=cbind(dff,"num_line")
+  colnames(dff)[ncol(dff)]="num_line"
+
+  dff=cbind(dff,"broken_line")
+  colnames(dff)[ncol(dff)]="broken_line"
+  
+  dff = cbind(dff,rep(0,nrow(dff)))
+  colnames(dff)[ncol(dff)] = "length_gain"
+  
+  dff = cbind(dff,rep(0,nrow(dff)))
+  colnames(dff)[ncol(dff)] = "eliminated_players"
+  
+  dff = cbind(dff,rep(0,nrow(dff)))
+  colnames(dff)[ncol(dff)] = "pass_broke_line"
+  
+  dff = cbind(dff,rep(0,nrow(dff)))
+  colnames(dff)[ncol(dff)] = "nb_broken_line"
+  
+  dff = cbind(dff,rep(0,nrow(dff)))
+  colnames(dff)[ncol(dff)] = "nb_players_forward"
+  
+  
+  while (i <= nrow(data)){
+        if (i<nrow(data) & data[i,"id"]==data[i-1,"id"]) {
+          i=i+1
+    }
+    else {
+      #on crée un sous dataset qui correspond aux infos d'une passe
+      if (i==nrow(data)){
+        #print(i)
+        subdata=data[c(j:i),]
+      }
+      else {
+       subdata=data[c(j:i-1),] 
+      }
+      
+      #on définit parmi les joueurs du freeze frame, ceux qui sont membres de l'équipe adverse et ceux qui font partis de l'équipe du joueur qui fait la passe
+      subdata$teammate[subdata $teammate == "TRUE"]=1
+      subdata$teammate[subdata $teammate== "FALSE"]=0
+      subdata$teammate=as.character(subdata$teammate)
+
+      k=1
+      for (k in 1:nrow(subdata)){
+        if (subdata[k,"teammate"]==1){
+          subdata[k,"teammate"]=subdata[k,"team.name"]
+        }
+        
+        else{
+      subdata[k,"teammate"]=subdata[k,"OpposingTeam"]
+         }
+      }
+    
+      #nombre de ligne cassée pour une passe précise
+      data_bis=break_line(subdata,3,8,10)
+      
+      #on ajoute les données de la passe au dataframe initial
+      if (i!=nrow(data)){
+      dff[c(j:i-1),"num_line"]=data_bis[,"num_line"]
+      dff[c(j:i-1),"broken_line"]=data_bis[,"broken_line"]
+      dff[c(j:i-1),"length_gain"]= data_bis[,"pass.end_location.x"]-data_bis[,"location.x"]
+      dff[c(j:i-1),"eliminated_players"]=data_bis[,"eliminated_players"]
+      dff[c(j:i-1),"pass_broke_line"]=data_bis[,"pass_broke_line"]
+      dff[c(j:i-1),"nb_broken_line"]=data_bis[,"nb_broken_line"]
+      dff[c(j:i-1),"nb_players_forward"]=data_bis[,"nb_players_forward"]
+      }
+      else {
+      dff[c(j:i),"num_line"]=data_bis[,"num_line"]
+      dff[c(j:i),"broken_line"]=data_bis[,"broken_line"]
+      dff[c(j:i),"length_gain"]= data_bis[,"pass.end_location.x"]-data_bis[,"location.x"]
+      dff[c(j:i),"eliminated_players"]=data_bis[,"eliminated_players"]
+      dff[c(j:i),"pass_broke_line"]=data_bis[,"pass_broke_line"]
+      dff[c(j:i),"nb_broken_line"]=data_bis[,"nb_broken_line"]
+      dff[c(j:i),"nb_players_forward"]=data_bis[,"nb_players_forward"]
+      }
+      
+      j=i
+      i=i+1
+    }
+    
+  }
+    return (dff)
+  }
+```
+
+```{r}
+test=line_match(ffs)
+```
+
+```{r}
+  players_pass <-test %>% slice(1) %>% 
+  bind_rows( test %>% filter(id!=lag(id)))
+```
+
+
+
+
+```{r}
+# création d'un tableau qui affiche le nombre de joueurs éliminés par chaque joueur lors d'un match 
+best_passer_match=function(ffs){
+  
+  test=line_match(ffs[,])
+  
+  
+  #data frame qui contient toutes les passes du match et qui nous dit quel joueur a fait la passe
+  players_pass <-test %>% slice(1) %>% 
+  bind_rows( test %>% filter(id!=lag(id)))
+  
+  #joueurs = unique(test$player.name)
+  
+  #on crée un dataframe qui contient le nom de chaque joueur et le nombre de joueurs que chacun ont éliminé
+  #tab1 <- data.frame(name_passer = joueurs,num_elim_players_in_line=0,number_passes=0,num_eliminated_players=0,average_length_gain=0,nb_passes_forward=0)
+  #tab1$num_elim_players_in_line=as.integer(tab1$num_elim_players_in_line)
+  
+  name <- test %>% slice(1) %>% 
+  bind_rows( test %>% filter(player.name!=lag(player.name)))
+
+  name = name[,c("team.name","player.name")]
+  
+  name <- unique(name)
+
+  tab1 <- data.frame(name,num_elim_players_in_line=0,number_passes=0,num_eliminated_players=0,average_length_gain=0,nb_passes_forward=0, nb_pass_broke_line = 0, ratio_pass_broke_line = 0,   ratio_nb_eliminated_players = 0, average.ball.end.x = 0, average.ball.end.y = 0, average_nb_players_forward = 0, nb_pass_complete = 0, ratio_pass_complete = 0)
+  
+  
+  #boucle qui permet de compter le nombre de passes de chaque joueur au cours d'un match 
+  for (j in (1:nrow(players_pass))){
+    tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"number_passes"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"number_passes"]+1
+    tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"num_eliminated_players"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"num_eliminated_players"]+players_pass[j,"eliminated_players"]
+    
+    tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_pass_broke_line"] =   tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_pass_broke_line"]+players_pass[j,"pass_broke_line"]
+    
+    tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average.ball.end.x"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average.ball.end.x"]+players_pass[j,"pass.end_location.x"]
+    tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average.ball.end.y"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average.ball.end.y"]+players_pass[j,"pass.end_location.y"]
+    tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average_nb_players_forward"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average_nb_players_forward"]+players_pass[j,"nb_players_forward"]
+    
+    if (players_pass[j,"length_gain"]>0){
+      tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_passes_forward"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_passes_forward"]+1
+      tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average_length_gain"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average_length_gain"]+players_pass[j,"length_gain"]
+    }
+    
+    if (players_pass[j,"pass.outcome.name"] == "Complete"){
+    tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_pass_complete"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_pass_complete"]+1
+  }
+  }
+  
+  
+  tab1[,"average_length_gain"]=round(tab1[,"average_length_gain"]/tab1[,"nb_passes_forward"],2)
+  tab1[,"average.ball.end.x"]=round(tab1[,"average.ball.end.x"]/tab1[,"number_passes"],2)
+  tab1[,"average.ball.end.y"]=round(tab1[,"average.ball.end.y"]/tab1[,"number_passes"],2)
+  tab1[,"average_nb_players_forward"]=round(tab1[,"average_nb_players_forward"]/tab1[,"number_passes"],2)
+  
+  #retourne le nom du joueur qui a fait la passe
+  #result = tab1[tab1[,"name_passer"]==test[1,"player.name"],"num_elim_players"]
+  #tab1[tab1[,"name_passer"]==test[1,"player.name"],"num_elim_players"] = result+1
+  
+  
+  
+  for (k in 1:nrow(test)){
+    if (test[k,"broken_line"]==TRUE){
+      result = tab1[tab1[,"player.name"]==test[k,"player.name"],"num_elim_players_in_line"]
+      tab1[tab1[,"player.name"]==test[k,"player.name"],"num_elim_players_in_line"] = result+1
+    }
+  }
+  
+  # on trie le tableau par ordre décroissant pour avoir le meilleur passeur en premier
+  tab1=tab1 %>% arrange(desc(num_elim_players_in_line))
+  
+  tab1[,"ratio_pass_broke_line"] = round(tab1[,"nb_pass_broke_line"]/tab1[,"number_passes"],3)
+  tab1[,"ratio_nb_eliminated_players"] = round(tab1[,"num_elim_players_in_line"]/tab1[,"num_eliminated_players"],3)
+  tab1[,"ratio_pass_complete"] = round(tab1[,"nb_pass_complete"]/tab1[,"number_passes"],3)
+
+  # newdata
+   return(tab1)
+}
+
+```
+
+```{r}
+tableau_test = best_passer_match(ffs)
+head(tableau_test)
+```
+
+```{r}
+ggplot(tableau_test) + geom_col(aes(x = num_elim_players_in_line, y = reorder(player.name, num_elim_players_in_line), fill = team.name))+
+  ggtitle("number of players eliminated during a match for each player")+
+  ylab("player name")
+```
+
+
+```{r}
+ggplot(tableau_test) + geom_col(aes(x = ratio_nb_eliminated_players, y = reorder(player.name, ratio_nb_eliminated_players), fill = team.name))+
+  ggtitle("ratio of eliminated players during a match for each player")+
+  ylab("player name")
+```
+
+```{r}
+ggplot(tableau_test) + geom_col(aes(x = average_length_gain, y = reorder(player.name, average_length_gain),fill = team.name))+
+  ggtitle("average length gain during a match for each player")+
+  ylab("player name")
+```
+
+```{r}
+ggplot(tableau_test) + geom_col(aes(x = ratio_pass_broke_line, y = reorder(player.name, ratio_pass_broke_line) ,fill = team.name))+
+  ggtitle("ratio of broken line passes during a match for each player")+
+  ylab("player name")
+```
+
+
+```{r}
+join_dataframe=function(data1, data2){
+  joueurs = unique(data1$player.name)
+  for (k in 1:nrow(data2)){
+    if (is.element(data2$player.name[k],joueurs)){
+      before_add = data1[data1[,"player.name"]==data2$player.name[k],"num_elim_players_in_line"]
+      add = data2[k,"num_elim_players_in_line"]
+      data1[data1[,"player.name"]==data2$player.name[k],"num_elim_players_in_line"] = before_add + add
+      
+      before_add = data1[data1[,"player.name"]==data2$player.name[k],"number_of_matches"]
+      data1[data1[,"player.name"]==data2$player.name[k],"number_of_matches"] = before_add + 1
+      
+      before_add = data1[data1[,"player.name"]==data2$player.name[k],"num_eliminated_players"]
+      add = data2[k,"num_eliminated_players"]
+      data1[data1[,"player.name"]==data2$player.name[k],"num_eliminated_players"] = before_add + add
+      
+      before_add = data1[data1[,"player.name"]==data2$player.name[k],"number_passes"]
+      add = data2[k,"number_passes"]
+      data1[data1[,"player.name"]==data2$player.name[k],"number_passes"] = before_add + add
+      
+      
+      before_add = data1[data1[,"average_length_gain"]==data2$player.name[k],"average_length_gain"]
+      add = data2[k,"average_length_gain"]
+      data1[data1[,"average_length_gain"]==data2$player.name[k],"average_length_gain"] = before_add + add
+      
+      before_add = data1[data1[,"nb_passes_forward"]==data2$player.name[k],"nb_passes_forward"]
+      add = data2[k,"nb_passes_forward"]
+      data1[data1[,"nb_passes_forward"]==data2$player.name[k],"nb_passes_forward"] = before_add + add
+      
+      before_add = data1[data1[,"nb_pass_broke_line"]==data2$player.name[k],"nb_pass_broke_line"]
+      add = data2[k,"nb_pass_broke_line"]
+      data1[data1[,"nb_pass_broke_line"]==data2$player.name[k],"nb_pass_broke_line"] = before_add + add
+      
+      before_add = data1[data1[,"average.ball.end.x"]==data2$player.name[k],"average.ball.end.x"]
+      add = data2[k,"average.ball.end.x"]
+      data1[data1[,"average.ball.end.x"]==data2$player.name[k],"average.ball.end.x"] = before_add + add
+      
+      before_add = data1[data1[,"average.ball.end.y"]==data2$player.name[k],"average.ball.end.y"]
+      add = data2[k,"average.ball.end.y"]
+      data1[data1[,"average.ball.end.y"]==data2$player.name[k],"average.ball.end.y"] = before_add + add
+      
+      before_add = data1[data1[,"average_nb_players_forward"]==data2$player.name[k],"average_nb_players_forward"]
+      add = data2[k,"average_nb_players_forward"]
+      data1[data1[,"average_nb_players_forward"]==data2$player.name[k],"average_nb_players_forward"] = before_add + add
+      
+      before_add = data1[data1[,"nb_pass_complete"]==data2$player.name[k],"nb_pass_complete"]
+      add = data2[k,"nb_pass_complete"]
+      data1[data1[,"nb_pass_complete"]==data2$player.name[k],"nb_pass_complete"] = before_add + add
+      
+    }else {
+      data1 = rbind(data1, data2[c(k),])
+    }
+  }
+  return (data1)
+}
+```
+
+```{r}
+line_breaking_all_matchs=function(Matches,begin=1,end=nrow(Matches)){
+  
+  for (i in begin:end){
+    print(paste("On regarde le match ", i))
+    
+
+    data360 <- StatsBombFree360Events(MatchesDF = Matches[i,1], Parallel = T)    
+    
+    events <- StatsBombFreeEvents(MatchesDF = Matches[i,1], Parallel = T)
+    
+    events <- allclean(events)
+    
+    events <- get.opposingteam(events)
+    
+    data360 = data360 %>% rename(id = event_uuid)
+    
+    events = events %>% left_join(data360, by = c("id" = "id"))
+    
+    events = events %>% rename(match_id = match_id.x) %>% select(-match_id.y)
+    
+    # -------------------------------------------
+    
+    
+    ffs = events %>%
+    group_by(team.name) %>%
+    filter(type.id==30) %>%
+    select(id, match_id, team.name, OpposingTeam, 
+           player.name, type.name,period,timestamp,
+           location.x, location.y, pass.end_location.x,pass.length,
+           pass.end_location.y, pass.recipient.name, possession_team.name, freeze_frame,pass.outcome.name,
+           pass.switch,pass.body_part.name,pass.outcome.name,pass.type.name,pass.height.name,
+           pass.shot_assist,under_pressure,pass.cross)
+  
+    
+    ffs = ffs %>% unnest(freeze_frame) %>%
+      mutate(ff_location.x = (map(location, 1)), ff_location.y = (map(location, 2))) %>%
+      select(-location) %>%
+      mutate(ff_location.x = as.numeric(ifelse(ff_location.x == "NULL", NA, ff_location.x)),
+             ff_location.y = as.numeric(ifelse(ff_location.y == "NULL", NA, ff_location.y)))
+
+    # -------------------------------------------
+    
+    ffs[is.na(ffs[,"pass.switch"]),"pass.switch"]=FALSE
+    ffs[is.na(ffs[,"pass.cross"]),"pass.cross"]=FALSE
+    ffs[is.na(ffs[,"under_pressure"]),"under_pressure"]=FALSE
+    ffs[is.na(ffs[,"pass.shot_assist"]),"pass.shot_assist"]=FALSE
+    
+    ffs[is.na(ffs[,"pass.outcome.name"]),"pass.outcome.name"]="Complete"
+    
+    ffs[is.na(ffs[,"pass.type.name"]),"pass.type.name"]="Classic"
+    
+    ffs=data.frame(ffs)
+        
+    # -------------------------------------------
+    
+    
+    
+    if (i == 1){
+      
+      test=line_match(ffs[,])
+      
+      
+        players_pass <-test %>% slice(1) %>% 
+        bind_rows( test %>% filter(id!=lag(id)))
+  
+       # joueurs = unique(test$player.name)
+    
+        #on crée un dataframe qui contient le nom de chaque joueur et le nombre de joueurs que chacun ont éliminé
+        
+        name <- test %>% slice(1) %>% 
+        bind_rows( test %>% filter(player.name!=lag(player.name)))
+      
+        name = name[,c("team.name","player.name")]
+        
+        name <- unique(name)
+      
+        tab1 <- data.frame(name,num_elim_players_in_line=0,number_passes=0,num_eliminated_players=0,number_of_matches=0, average_length_gain=0,nb_passes_forward=0, nb_pass_broke_line = 0, average.ball.end.x = 0, average.ball.end.y = 0, average_nb_players_forward = 0, nb_pass_complete = 0)
+        
+        
+  
+        #boucle qui permet de compter le nombre de passes de chaque joueur au cours d'un match 
+        for (j in (1:nrow(players_pass))){
+          tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"number_passes"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"number_passes"]+1
+          tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"num_eliminated_players"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"num_eliminated_players"]+players_pass[j,"eliminated_players"]
+          
+          tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_pass_broke_line"] =   tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_pass_broke_line"]+players_pass[j,"pass_broke_line"]
+          
+          tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average.ball.end.x"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average.ball.end.x"]+players_pass[j,"pass.end_location.x"]
+          tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average.ball.end.y"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average.ball.end.y"]+players_pass[j,"pass.end_location.y"]
+          tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average_nb_players_forward"] =          tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average_nb_players_forward"]+players_pass[j,"nb_players_forward"]
+                    
+              if (players_pass[j,"length_gain"]>0){
+      tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_passes_forward"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_passes_forward"]+1
+      tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average_length_gain"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average_length_gain"]+players_pass[j,"length_gain"]
+              }
+          
+              if (players_pass[j,"pass.outcome.name"] == "Complete"){
+    tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_pass_complete"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_pass_complete"]+1
+  }
+        }
+        
+        tab1[,"average_length_gain"]=round(tab1[,"average_length_gain"]/tab1[,"nb_passes_forward"],2)
+        tab1[,"average.ball.end.x"]=round(tab1[,"average.ball.end.x"]/tab1[,"number_passes"],2)
+        tab1[,"average.ball.end.y"]=round(tab1[,"average.ball.end.y"]/tab1[,"number_passes"],2)
+        tab1[,"average_nb_players_forward"]=round(tab1[,"average_nb_players_forward"]/tab1[,"number_passes"],2)
+      
+      for (k in 1:nrow(test)){
+        if (test[k,"broken_line"]==TRUE){
+          result = tab1[tab1[,"player.name"]==test[k,"player.name"],"num_elim_players_in_line"]
+          tab1[tab1[,"player.name"]==test[k,"player.name"],"num_elim_players_in_line"] = result+1
+        }
+        
+      }
+      
+      tab1[,"number_of_matches"] = tab1[,"number_of_matches"]+1
+      
+      recap = tab1
+      
+      
+      
+    } else {
+      
+      
+      test=line_match(ffs[,])
+  
+      joueurs = unique(test$player.name)
+      
+        players_pass <-test %>% slice(1) %>% 
+        bind_rows( test %>% filter(id!=lag(id)))
+  
+        #joueurs = unique(test$player.name)
+    
+        #on crée un dataframe qui contient le nom de chaque joueur et le nombre de joueurs que chacun ont éliminé
+        name <- test %>% slice(1) %>% 
+        bind_rows( test %>% filter(player.name!=lag(player.name)))
+      
+        name = name[,c("team.name","player.name")]
+        
+        name <- unique(name)
+      
+        tab1 <- data.frame(name,num_elim_players_in_line=0,number_passes=0,num_eliminated_players=0,number_of_matches=0, average_length_gain=0,nb_passes_forward=0, nb_pass_broke_line = 0, average.ball.end.x = 0, average.ball.end.y = 0, average_nb_players_forward = 0, nb_pass_complete = 0)
+        
+        
+  
+        #boucle qui permet de compter le nombre de passes de chaque joueur au cours d'un match 
+        for (j in (1:nrow(players_pass))){
+          tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"number_passes"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"number_passes"]+1
+          tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"num_eliminated_players"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"num_eliminated_players"]+players_pass[j,"eliminated_players"]
+          
+          tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_pass_broke_line"] =   tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_pass_broke_line"]+players_pass[j,"pass_broke_line"]
+          tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average.ball.end.x"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average.ball.end.x"]+players_pass[j,"pass.end_location.x"]
+          tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average.ball.end.y"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average.ball.end.y"]+players_pass[j,"pass.end_location.y"]
+          
+          tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average_nb_players_forward"] =          tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average_nb_players_forward"]+players_pass[j,"nb_players_forward"]
+                    
+              if (players_pass[j,"length_gain"]>0){
+          tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_passes_forward"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_passes_forward"]+1
+          tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average_length_gain"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average_length_gain"]+players_pass[j,"length_gain"]
+              }
+          
+              if (players_pass[j,"pass.outcome.name"] == "Complete"){
+    tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_pass_complete"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_pass_complete"]+1
+  }
+        }
+      
+          tab1[,"average_length_gain"]=round(tab1[,"average_length_gain"]/tab1[,"nb_passes_forward"],2)
+          tab1[,"average.ball.end.x"]=round(tab1[,"average.ball.end.x"]/tab1[,"number_passes"],2)
+          tab1[,"average.ball.end.y"]=round(tab1[,"average.ball.end.y"]/tab1[,"number_passes"],2)
+          tab1[,"average_nb_players_forward"]=round(tab1[,"average_nb_players_forward"]/tab1[,"number_passes"],2)
+          
+      
+      for (k in 1:nrow(test)){
+        if (test[k,"broken_line"]==TRUE){
+          result = tab1[tab1[,"player.name"]==test[k,"player.name"],"num_elim_players_in_line"]
+          tab1[tab1[,"player.name"]==test[k,"player.name"],"num_elim_players_in_line"] = result+1
+        }
+        
+      }
+      
+      tab1[,"number_of_matches"] = tab1[,"number_of_matches"]+1
+      num_eliminated_player_for_this_match = tab1
+      
+      recap = join_dataframe(recap,num_eliminated_player_for_this_match)
+    }
+    
+  }
+  
+  recap=data.frame(recap, ratio_pass_broke_line = 0, ratio_nb_eliminated_players = 0, num_elim_players_in_line_by_match=0,number_passes_by_match=0,num_eliminated_players_by_match=0,average_length_gain_by_match=0,nb_passes_forward_by_match=0, nb_pass_broke_line_by_match = 0, average.ball.end.x_by_match = 0,average.ball.end.y_by_match = 0,average_nb_players_forward_by_match = 0, nb_pass_complete_by_match = 0)
+  
+  recap[,"num_elim_players_in_line_by_match"] = round(recap[,"num_elim_players_in_line"]/recap[,"number_of_matches"],3)
+  recap[,"number_passes_by_match"] = round(recap[,"number_passes"]/recap[,"number_of_matches"],3)
+  recap[,"num_eliminated_players_by_match"] = round(recap[,"num_eliminated_players"]/recap[,"number_of_matches"],3)
+  recap[,"average_length_gain_by_match"] = round(recap[,"average_length_gain"]/recap[,"number_of_matches"],3)
+  recap[,"nb_passes_forward_by_match"] = round(recap[,"nb_passes_forward"]/recap[,"number_of_matches"],3)
+  recap[,"nb_pass_broke_line_by_match"] = round(recap[,"nb_pass_broke_line"]/recap[,"number_of_matches"],3)
+  recap[,"ratio_pass_broke_line"] = round(recap[,"nb_pass_broke_line"]/recap[,"number_passes"],3)
+  recap[,"ratio_nb_eliminated_players"] = round(recap[,"num_elim_players_in_line"]/recap[,"num_eliminated_players"],3)
+  
+  recap[,"average.ball.end.x_by_match"] = round(recap[,"average.ball.end.x"]/recap[,"number_of_matches"],3)
+  recap[,"average.ball.end.y_by_match"] = round(recap[,"average.ball.end.y"]/recap[,"number_of_matches"],3)
+  recap[,"average_nb_players_forward_by_match"] = round(recap[,"average_nb_players_forward"]/recap[,"number_of_matches"],3)
+  
+  recap[,"nb_pass_complete_by_match"] = round(recap[,"nb_pass_complete"]/recap[,"number_of_matches"],3)
+  
+  recap[is.na(recap[,"average_length_gain"]),"average_length_gain"]=0
+recap[is.na(recap[,"average_length_gain_by_match"]),"average_length_gain_by_match"]=0
+recap[is.na(recap[,"ratio_nb_eliminated_players"]),"ratio_nb_eliminated_players"]=0
+  
+  return(recap)
+}
+```
+
+```{r}
+Tab_recap = line_breaking_all_matchs(Matches,1,2)
+```
+
+```{r}
+head(Tab_recap)
+```
+
+
+
+```{r}
+library(FactoMineR)
+library(factoextra)
+data_acp = Tab_recap[,-which(colnames(Tab_recap) == "player.name")]
+data_acp[,"team.name"] = as.factor(data_acp[,"team.name"])
+
+res.acp <- PCA(data_acp[,-1],scale.unit=TRUE,ncp=20, graph=FALSE)
+```
+
+```{r}
+#cat("\nPourcentages d’inerties cumulées des axes principaux :\n")
+#print(res.acp$eig[,"cumulative percentage of variance"]) 
+fviz_screeplot(res.acp, addlabels = TRUE, ylim = c(0, 80), main="Pourcentages d’inerties")
+```
+```{r}
+acp = prcomp(data_acp[,-1])
+acpVar =as.data.frame(acp$rotation)
+acpVar=acpVar[,1:4]
+acpVar[,"variables"]<-rownames(acpVar)
+acpM=melt(acpVar)
+```
+
+```{r fig.height=6}
+options(repr.plot.width = 15, repr.plot.height = 10)
+ggplot(acpM,aes(x=variables, y=value))+
+  geom_col(color="yellow")+
+  facet_wrap(~variable) +
+  coord_flip()
+```
+
+
+```{r}
+fviz_pca_ind(res.acp,repel=TRUE, addEllipses = TRUE, ellipse.level = 0.95,axes=c(1,2),col.ind=data_acp[,"team.name"])
+```
+```{r}
+fviz_pca_ind(res.acp,repel=TRUE, addEllipses = TRUE, ellipse.level = 0.95,axes=c(2,3),col.ind=data_acp[,"team.name"])
+```
+
+
+```{r}
+#write.xlsx(Tab_recap,"tableau_recapitulatif.xlsx")
+```
+
+```{r}
+Tab_recap
+```
+```{r}
+tab = Tab_recap %>% arrange(desc(ratio_pass_broke_line))
+tab
+ggplot(tab[0:20,]) + geom_col(aes(x = ratio_pass_broke_line, y = reorder(player.name, ratio_pass_broke_line), fill =team.name))+
+  ggtitle("ratio of broken line passes during a match for each player")+
+  ylab("player name")
+```
+
+
+
+```{r}
+#match1 = Tab_recap[Tab_recap[,"number_of_matches"]==1,]
+#match2 = Tab_recap[Tab_recap[,"number_of_matches"]==2,]
+#match3 = Tab_recap[Tab_recap[,"number_of_matches"]==3,]
+#match4 = Tab_recap[Tab_recap[,"number_of_matches"]==4,]
+#match5 = Tab_recap[Tab_recap[,"number_of_matches"]==5,]
+#match6 = Tab_recap[Tab_recap[,"number_of_matches"]==6,]
+```
+
+
+
+```{r fig.height=15}
+ggplot(match1) + geom_col(aes(x = num_elim_players, y = reorder(name_passer, num_elim_players)),fill = "darkblue")+
+  ggtitle("number of players eliminated during a match for each player")+
+  ylab("player name")
+ggplot(match2) + geom_col(aes(x = num_elim_players, y = reorder(name_passer, num_elim_players)),fill = "darkblue")+
+  ggtitle("number of players eliminated during a match for each player")+
+  ylab("player name")
+ggplot(match3) + geom_col(aes(x = num_elim_players, y = reorder(name_passer, num_elim_players)),fill = "darkblue")+
+  ggtitle("number of players eliminated during a match for each player")+
+  ylab("player name")
+ggplot(match4) + geom_col(aes(x = num_elim_players, y = reorder(name_passer, num_elim_players)),fill = "darkblue")+
+  ggtitle("number of players eliminated during a match for each player")+
+  ylab("player name")
+ggplot(match5) + geom_col(aes(x = num_elim_players, y = reorder(name_passer, num_elim_players)),fill = "darkblue")+
+  ggtitle("number of players eliminated during a match for each player")+
+  ylab("player name")
+ggplot(match6) + geom_col(aes(x = num_elim_players, y = reorder(name_passer, num_elim_players)),fill = "darkblue")+
+  ggtitle("number of players eliminated during a match for each player")+
+  ylab("player name")
+```
+
+
+```{r}
+tab_recap <- Tab_recap[,order(-number_of_matches, -num_elim_players)]
+```
+
+
+
