@@ -919,6 +919,8 @@ head(Tab_recap)
 
 
 
+
+
 ```{r}
 library(FactoMineR)
 library(factoextra)
@@ -961,6 +963,31 @@ fviz_pca_ind(res.acp,repel=TRUE, addEllipses = TRUE, ellipse.level = 0.95,axes=c
 ```{r}
 #write.xlsx(Tab_recap,"tableau_recapitulatif.xlsx")
 ```
+
+
+
+
+```{r}
+library(tidyverse)
+
+data_frame_team <- Tab_recap %>% group_by(team.name) %>% 
+  summarise_all(funs(if(is.numeric(.)) mean(.) ))
+
+data_frame_team
+
+data_acp[,"team.name"] = as.factor(data_acp[,"team.name"])
+
+res.acp <- PCA(data_frame_team[,-1],scale.unit=TRUE,ncp=20, graph=FALSE)
+```
+
+
+
+
+
+
+
+
+
 
 ```{r}
 Tab_recap
