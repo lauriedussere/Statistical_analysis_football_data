@@ -43,7 +43,6 @@ data360 = data360 %>% rename(id = event_uuid)
 events = events %>% left_join(data360, by = c("id" = "id"))
 
 events = events %>% rename(match_id = match_id.x) %>% select(-match_id.y)
-
 ```
 
 ```{r}
@@ -199,11 +198,11 @@ pass_player=data[pass_player,]
 # Etude d'une passe
 
 ```{r}
-France_1<-filter(ffs,id=="22612d6c-6e85-48ac-b4cd-4ba1f57b81ed") #passe intéressante 10 joueurs
+#France_1<-filter(ffs,id=="22612d6c-6e85-48ac-b4cd-4ba1f57b81ed") #passe intéressante 10 joueurs
 #France_1<-filter(ffs,id=="7be2161b-9a2f-430d-b8db-9149c930990a")
 #France_1<-filter(ffs,id=="2dc392ac-47cf-4871-adfb-53384a2e5a5d") 
-#France_1<-filter(ffs,id=="1beb436e-5702-4a3d-8f06-7f37edfbc596")
-# France_1<-filter(ffs,id=="7f2ef6ee-7fb8-4efd-bdeb-e033edecc517")
+France_1<-filter(ffs,id=="42cf0125-d9ab-4506-9bf0-be2b0a0832a7")
+#France_1<-filter(ffs,id=="48a36a99-8460-4ab1-a804-1cabb545715b")
 
 
 ```
@@ -241,7 +240,7 @@ France_1[is.na(France_1[,"pass.type.name"]),"pass.type.name"]="Classic"
 
 
 ```{r fig.height=8}
-display_passes("48a36a99-8460-4ab1-a804-1cabb545715b")
+display_passes("42cf0125-d9ab-4506-9bf0-be2b0a0832a7")
 ```
 
 ```{r}
@@ -298,6 +297,8 @@ break_line=function(data,x_dist,y_dist,pass.length){
   
   France_1_bis = cbind(France_1_bis,rep(nrow(players_elim),nrow(France_1_bis)))
   colnames(France_1_bis)[ncol(France_1_bis)] = "eliminated_players"
+  
+  France_1_bis <- data.frame(France_1_bis, pass_broke_line = 0, nb_line_broken = 0)
   
   
   if (nrow(players_elim)==0){
@@ -357,6 +358,9 @@ break_line=function(data,x_dist,y_dist,pass.length){
               pass.end=c(players_elim[j,"pass.end_location.x"],players_elim[j,"pass.end_location.y"])
 
               line_broken=do_intersec(player1,player2,pass.start,pass.end)
+              if (line_broken == TRUE) {
+                France_1_bis[, "pass_broke_line"] = rep(1, nrow(France_1_bis))
+              }
               
               #on rajoute un booléan pour dire si la ligne est cassée ou non 
               new_elim_players[seq(i,j, by = 1),"broken_line"]=line_broken
@@ -392,6 +396,12 @@ break_line=function(data,x_dist,y_dist,pass.length){
   
   France_1_bis[is.na(France_1_bis$num_line),"num_line"]="no_line"
   France_1_bis[is.na(France_1_bis$broken_line),"broken_line"]="FALSE"
+  
+  info.elim = info.elim[info.elim[,"broken_line"]==TRUE,]
+  nombre_ligne = length(unique(info.elim$num_line))
+  
+  France_1_bis[,'nb_broken_line'] = rep(nombre_ligne,nrow(France_1_bis))
+  
   return (France_1_bis)
   }
 ```
@@ -421,6 +431,12 @@ line_match=function(data){
   
   dff = cbind(dff,rep(0,nrow(dff)))
   colnames(dff)[ncol(dff)] = "eliminated_players"
+  
+  dff = cbind(dff,rep(0,nrow(dff)))
+  colnames(dff)[ncol(dff)] = "pass_broke_line"
+  
+  dff = cbind(dff,rep(0,nrow(dff)))
+  colnames(dff)[ncol(dff)] = "nb_broken_line"
   
   
   while (i <= nrow(data)){
@@ -462,6 +478,8 @@ line_match=function(data){
       dff[c(j:i-1),"broken_line"]=data_bis[,"broken_line"]
       dff[c(j:i-1),"length_gain"]= data_bis[,"pass.end_location.x"]-data_bis[,"location.x"]
       dff[c(j:i-1),"eliminated_players"]=data_bis[,"eliminated_players"]
+      dff[c(j:i-1),"pass_broke_line"]=data_bis[,"pass_broke_line"]
+      dff[c(j:i-1),"nb_broken_line"]=data_bis[,"nb_broken_line"]
       
       }
       else {
@@ -469,8 +487,10 @@ line_match=function(data){
       dff[c(j:i),"broken_line"]=data_bis[,"broken_line"]
       dff[c(j:i),"length_gain"]= data_bis[,"pass.end_location.x"]-data_bis[,"location.x"]
       dff[c(j:i),"eliminated_players"]=data_bis[,"eliminated_players"]
+      dff[c(j:i),"pass_broke_line"]=data_bis[,"pass_broke_line"]
+      dff[c(j:i),"nb_broken_line"]=data_bis[,"nb_broken_line"]
+      
       }
-
       
       j=i
       i=i+1
@@ -496,24 +516,36 @@ best_passer_match=function(ffs){
   players_pass <-test %>% slice(1) %>% 
   bind_rows( test %>% filter(id!=lag(id)))
   
-  joueurs = unique(test$player.name)
+  #joueurs = unique(test$player.name)
   
   #on crée un dataframe qui contient le nom de chaque joueur et le nombre de joueurs que chacun ont éliminé
-  tab1 <- data.frame(name_passer = joueurs,num_elim_players_in_line=0,number_passes=0,num_eliminated_players=0,average_length_gain=0,nb_passes_forward=0)
-  tab1$num_elim_players_in_line=as.integer(tab1$num_elim_players_in_line)
+  #tab1 <- data.frame(name_passer = joueurs,num_elim_players_in_line=0,number_passes=0,num_eliminated_players=0,average_length_gain=0,nb_passes_forward=0)
+  #tab1$num_elim_players_in_line=as.integer(tab1$num_elim_players_in_line)
+  
+  name <- test %>% slice(1) %>% 
+  bind_rows( test %>% filter(player.name!=lag(player.name)))
+
+  name = name[,c("team.name","player.name")]
+  
+  name <- unique(name)
+
+  tab1 <- data.frame(name,num_elim_players_in_line=0,number_passes=0,num_eliminated_players=0,average_length_gain=0,nb_passes_forward=0, nb_pass_broke_line = 0, ratio_pass_broke_line = 0,   ratio_nb_eliminated_players = 0)
   
   
   #boucle qui permet de compter le nombre de passes de chaque joueur au cours d'un match 
   for (j in (1:nrow(players_pass))){
-    tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"number_passes"] = tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"number_passes"]+1
-    tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"num_eliminated_players"] = tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"num_eliminated_players"]+players_pass[j,"eliminated_players"]
+    tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"number_passes"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"number_passes"]+1
+    tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"num_eliminated_players"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"num_eliminated_players"]+players_pass[j,"eliminated_players"]
+    
+    tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_pass_broke_line"] =   tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_pass_broke_line"]+players_pass[j,"pass_broke_line"]
+    
     if (players_pass[j,"length_gain"]>0){
-      tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"nb_passes_forward"] = tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"nb_passes_forward"]+1
-      tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"average_length_gain"] = tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"average_length_gain"]+players_pass[j,"length_gain"]
+      tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_passes_forward"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_passes_forward"]+1
+      tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average_length_gain"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average_length_gain"]+players_pass[j,"length_gain"]
     }
   }
   
-  tab1[,"average_length_gain"]=tab1[,"average_length_gain"]/tab1[,"nb_passes_forward"]
+  tab1[,"average_length_gain"]=round(tab1[,"average_length_gain"]/tab1[,"nb_passes_forward"],2)
   
   
   #retourne le nom du joueur qui a fait la passe
@@ -524,14 +556,18 @@ best_passer_match=function(ffs){
   
   for (k in 1:nrow(test)){
     if (test[k,"broken_line"]==TRUE){
-      result = tab1[tab1[,"name_passer"]==test[k,"player.name"],"num_elim_players_in_line"]
-      tab1[tab1[,"name_passer"]==test[k,"player.name"],"num_elim_players_in_line"] = result+1
+      result = tab1[tab1[,"player.name"]==test[k,"player.name"],"num_elim_players_in_line"]
+      tab1[tab1[,"player.name"]==test[k,"player.name"],"num_elim_players_in_line"] = result+1
     }
   }
   
-
   # on trie le tableau par ordre décroissant pour avoir le meilleur passeur en premier
   tab1=tab1 %>% arrange(desc(num_elim_players_in_line))
+  
+  tab1[,"ratio_pass_broke_line"] = round(tab1[,"nb_pass_broke_line"]/tab1[,"number_passes"],3)
+  tab1[,"ratio_nb_eliminated_players"] = round(tab1[,"num_elim_players_in_line"]/tab1[,"num_eliminated_players"],3)
+  
+
   # newdata
    return(tab1)
 }
@@ -544,41 +580,61 @@ head(tableau_test)
 ```
 
 ```{r}
-ggplot(tableau_test) + geom_col(aes(x = num_elim_players_in_line, y = reorder(name_passer, num_elim_players_in_line)),fill = "darkblue")+
+ggplot(tableau_test) + geom_col(aes(x = num_elim_players_in_line, y = reorder(player.name, num_elim_players_in_line), fill = team.name))+
   ggtitle("number of players eliminated during a match for each player")+
+  ylab("player name")
+```
+```{r}
+ggplot(tableau_test) + geom_col(aes(x = ratio_nb_eliminated_players, y = reorder(player.name, ratio_nb_eliminated_players), fill = team.name))+
+  ggtitle("ratio of eliminated players during a match for each player")+
   ylab("player name")
 ```
 
 ```{r}
+ggplot(tableau_test) + geom_col(aes(x = average_length_gain, y = reorder(player.name, average_length_gain),fill = team.name))+
+  ggtitle("average length gain during a match for each player")+
+  ylab("player name")
+```
+
+```{r}
+ggplot(tableau_test) + geom_col(aes(x = ratio_pass_broke_line, y = reorder(player.name, ratio_pass_broke_line) ,fill = team.name))+
+  ggtitle("ratio of broken line passes during a match for each player")+
+  ylab("player name")
+```
+
+
+```{r}
 join_dataframe=function(data1, data2){
-  joueurs = unique(data1$name_passer)
+  joueurs = unique(data1$player.name)
   for (k in 1:nrow(data2)){
-    if (is.element(data2$name_passer[k],joueurs)){
-      before_add = data1[data1[,"name_passer"]==data2$name_passer[k],"num_elim_players_in_line"]
+    if (is.element(data2$player.name[k],joueurs)){
+      before_add = data1[data1[,"player.name"]==data2$player.name[k],"num_elim_players_in_line"]
       add = data2[k,"num_elim_players_in_line"]
-      data1[data1[,"name_passer"]==data2$name_passer[k],"num_elim_players_in_line"] = before_add + add
+      data1[data1[,"player.name"]==data2$player.name[k],"num_elim_players_in_line"] = before_add + add
       
-      before_add = data1[data1[,"name_passer"]==data2$name_passer[k],"number_of_matches"]
-      data1[data1[,"name_passer"]==data2$name_passer[k],"number_of_matches"] = before_add + 1
+      before_add = data1[data1[,"player.name"]==data2$player.name[k],"number_of_matches"]
+      data1[data1[,"player.name"]==data2$player.name[k],"number_of_matches"] = before_add + 1
       
-      before_add = data1[data1[,"name_passer"]==data2$name_passer[k],"num_eliminated_players"]
+      before_add = data1[data1[,"player.name"]==data2$player.name[k],"num_eliminated_players"]
       add = data2[k,"num_eliminated_players"]
-      data1[data1[,"name_passer"]==data2$name_passer[k],"num_eliminated_players"] = before_add + add
+      data1[data1[,"player.name"]==data2$player.name[k],"num_eliminated_players"] = before_add + add
       
-      before_add = data1[data1[,"name_passer"]==data2$name_passer[k],"number_passes"]
+      before_add = data1[data1[,"player.name"]==data2$player.name[k],"number_passes"]
       add = data2[k,"number_passes"]
-      data1[data1[,"name_passer"]==data2$name_passer[k],"number_passes"] = before_add + add
+      data1[data1[,"player.name"]==data2$player.name[k],"number_passes"] = before_add + add
       
       
-      before_add = data1[data1[,"average_length_gain"]==data2$name_passer[k],"average_length_gain"]
+      before_add = data1[data1[,"average_length_gain"]==data2$player.name[k],"average_length_gain"]
       add = data2[k,"average_length_gain"]
-      data1[data1[,"average_length_gain"]==data2$name_passer[k],"average_length_gain"] = before_add + add
+      data1[data1[,"average_length_gain"]==data2$player.name[k],"average_length_gain"] = before_add + add
       
-      before_add = data1[data1[,"nb_passes_forward"]==data2$name_passer[k],"nb_passes_forward"]
+      before_add = data1[data1[,"nb_passes_forward"]==data2$player.name[k],"nb_passes_forward"]
       add = data2[k,"nb_passes_forward"]
-      data1[data1[,"nb_passes_forward"]==data2$name_passer[k],"nb_passes_forward"] = before_add + add
+      data1[data1[,"nb_passes_forward"]==data2$player.name[k],"nb_passes_forward"] = before_add + add
       
-      
+      before_add = data1[data1[,"nb_pass_broke_line"]==data2$player.name[k],"nb_pass_broke_line"]
+      add = data2[k,"nb_pass_broke_line"]
+      data1[data1[,"nb_pass_broke_line"]==data2$player.name[k],"nb_pass_broke_line"] = before_add + add
       
     }else {
       data1 = rbind(data1, data2[c(k),])
@@ -647,7 +703,6 @@ line_breaking_all_matchs=function(Matches,begin=1,end=nrow(Matches)){
     
     
     if (i == 1){
-      print("on rentre dans la première boucle")
       
       test=line_match(ffs[,])
       
@@ -655,30 +710,40 @@ line_breaking_all_matchs=function(Matches,begin=1,end=nrow(Matches)){
         players_pass <-test %>% slice(1) %>% 
         bind_rows( test %>% filter(id!=lag(id)))
   
-        joueurs = unique(test$player.name)
+       # joueurs = unique(test$player.name)
     
         #on crée un dataframe qui contient le nom de chaque joueur et le nombre de joueurs que chacun ont éliminé
-        tab1 <- data.frame(name_passer = joueurs,num_elim_players_in_line=0,number_passes=0,num_eliminated_players=0,number_of_matches=0,average_length_gain=0,nb_passes_forward=0)
-        tab1$number_of_matches=as.integer(tab1$number_of_matches)
-        tab1$num_elim_players_in_line=as.integer(tab1$num_elim_players_in_line)
-  
+        
+        name <- test %>% slice(1) %>% 
+        bind_rows( test %>% filter(player.name!=lag(player.name)))
+      
+        name = name[,c("team.name","player.name")]
+        
+        name <- unique(name)
+      
+        tab1 <- data.frame(name,num_elim_players_in_line=0,number_passes=0,num_eliminated_players=0,number_of_matches=0, average_length_gain=0,nb_passes_forward=0, nb_pass_broke_line = 0)
+        
+        
   
         #boucle qui permet de compter le nombre de passes de chaque joueur au cours d'un match 
         for (j in (1:nrow(players_pass))){
-          tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"number_passes"] = tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"number_passes"]+1
-          tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"num_eliminated_players"] = tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"num_eliminated_players"]+players_pass[j,"eliminated_players"]
+          tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"number_passes"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"number_passes"]+1
+          tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"num_eliminated_players"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"num_eliminated_players"]+players_pass[j,"eliminated_players"]
+          
+        tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_pass_broke_line"] =   tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_pass_broke_line"]+players_pass[j,"pass_broke_line"]
+                    
               if (players_pass[j,"length_gain"]>0){
-      tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"nb_passes_forward"] = tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"nb_passes_forward"]+1
-      tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"average_length_gain"] = tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"average_length_gain"]+players_pass[j,"length_gain"]
+      tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_passes_forward"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_passes_forward"]+1
+      tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average_length_gain"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average_length_gain"]+players_pass[j,"length_gain"]
     }
         }
         
-        tab1[,"average_length_gain"]=tab1[,"average_length_gain"]/tab1[,"nb_passes_forward"]
+        tab1[,"average_length_gain"]=round(tab1[,"average_length_gain"]/tab1[,"nb_passes_forward"],2)
       
       for (k in 1:nrow(test)){
         if (test[k,"broken_line"]==TRUE){
-          result = tab1[tab1[,"name_passer"]==test[k,"player.name"],"num_elim_players_in_line"]
-          tab1[tab1[,"name_passer"]==test[k,"player.name"],"num_elim_players_in_line"] = result+1
+          result = tab1[tab1[,"player.name"]==test[k,"player.name"],"num_elim_players_in_line"]
+          tab1[tab1[,"player.name"]==test[k,"player.name"],"num_elim_players_in_line"] = result+1
         }
         
       }
@@ -687,7 +752,7 @@ line_breaking_all_matchs=function(Matches,begin=1,end=nrow(Matches)){
       
       recap = tab1
       
-      #print(recap)
+      
       
     } else {
       
@@ -699,71 +764,97 @@ line_breaking_all_matchs=function(Matches,begin=1,end=nrow(Matches)){
         players_pass <-test %>% slice(1) %>% 
         bind_rows( test %>% filter(id!=lag(id)))
   
-        joueurs = unique(test$player.name)
+        #joueurs = unique(test$player.name)
     
         #on crée un dataframe qui contient le nom de chaque joueur et le nombre de joueurs que chacun ont éliminé
-        tab1 <- data.frame(name_passer = joueurs,num_elim_players_in_line=0,number_passes=0,num_eliminated_players=0,number_of_matches=0,average_length_gain=0,nb_passes_forward=0)
-        tab1$number_of_matches=as.integer(tab1$number_of_matches)
-        tab1$num_elim_players_in_line=as.integer(tab1$num_elim_players_in_line)
-  
+        name <- test %>% slice(1) %>% 
+        bind_rows( test %>% filter(player.name!=lag(player.name)))
+      
+        name = name[,c("team.name","player.name")]
+        
+        name <- unique(name)
+      
+        tab1 <- data.frame(name,num_elim_players_in_line=0,number_passes=0,num_eliminated_players=0,number_of_matches=0, average_length_gain=0,nb_passes_forward=0, nb_pass_broke_line = 0)
+        
+        
   
         #boucle qui permet de compter le nombre de passes de chaque joueur au cours d'un match 
         for (j in (1:nrow(players_pass))){
-          tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"number_passes"] = tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"number_passes"]+1
-          tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"num_eliminated_players"] = tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"num_eliminated_players"]+players_pass[j,"eliminated_players"]
+          tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"number_passes"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"number_passes"]+1
+          tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"num_eliminated_players"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"num_eliminated_players"]+players_pass[j,"eliminated_players"]
+          
+          tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_pass_broke_line"] =   tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_pass_broke_line"]+players_pass[j,"pass_broke_line"]
+                    
               if (players_pass[j,"length_gain"]>0){
-      tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"nb_passes_forward"] = tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"nb_passes_forward"]+1
-      tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"average_length_gain"] = tab1[tab1[,"name_passer"]==players_pass[j,"player.name"],"average_length_gain"]+players_pass[j,"length_gain"]
+      tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_passes_forward"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"nb_passes_forward"]+1
+      tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average_length_gain"] = tab1[tab1[,"player.name"]==players_pass[j,"player.name"],"average_length_gain"]+players_pass[j,"length_gain"]
     }
         }
       
-          tab1[,"average_length_gain"]=tab1[,"average_length_gain"]/tab1[,"nb_passes_forward"]
+          tab1[,"average_length_gain"]=round(tab1[,"average_length_gain"]/tab1[,"nb_passes_forward"],2)
       
       for (k in 1:nrow(test)){
         if (test[k,"broken_line"]==TRUE){
-          result = tab1[tab1[,"name_passer"]==test[k,"player.name"],"num_elim_players_in_line"]
-          tab1[tab1[,"name_passer"]==test[k,"player.name"],"num_elim_players_in_line"] = result+1
+          result = tab1[tab1[,"player.name"]==test[k,"player.name"],"num_elim_players_in_line"]
+          tab1[tab1[,"player.name"]==test[k,"player.name"],"num_elim_players_in_line"] = result+1
         }
         
       }
       
       tab1[,"number_of_matches"] = tab1[,"number_of_matches"]+1
       num_eliminated_player_for_this_match = tab1
-      #print(num_eliminated_player_for_this_match)
+      
       recap = join_dataframe(recap,num_eliminated_player_for_this_match)
     }
     
-    
-    
   }
-  print(recap)
+  
+  recap=data.frame(recap, ratio_pass_broke_line = 0, ratio_nb_eliminated_players = 0, num_elim_players_in_line_by_match=0,number_passes_by_match=0,num_eliminated_players_by_match=0,average_length_gain_by_match=0,nb_passes_forward_by_match=0, nb_pass_broke_line_by_match = 0)
+  
+  recap[,"num_elim_players_in_line_by_match"] = round(recap[,"num_elim_players_in_line"]/recap[,"number_of_matches"],3)
+  recap[,"number_passes_by_match"] = round(recap[,"number_passes"]/recap[,"number_of_matches"],3)
+  recap[,"num_eliminated_players_by_match"] = round(recap[,"num_eliminated_players"]/recap[,"number_of_matches"],3)
+  recap[,"average_length_gain_by_match"] = round(recap[,"average_length_gain"]/recap[,"number_of_matches"],3)
+  recap[,"nb_passes_forward_by_match"] = round(recap[,"nb_passes_forward"]/recap[,"number_of_matches"],3)
+  recap[,"nb_pass_broke_line_by_match"] = round(recap[,"nb_pass_broke_line"]/recap[,"number_of_matches"],3)
+  recap[,"ratio_pass_broke_line"] = round(recap[,"nb_pass_broke_line"]/recap[,"number_passes"],3)
+  recap[,"ratio_nb_eliminated_players"] = round(recap[,"num_elim_players_in_line"]/recap[,"num_eliminated_players"],3)
+  
   return(recap)
 }
-
 ```
 
 ```{r}
-Tab_recap = line_breaking_all_matchs(Matches,1,3)
+Tab_recap = line_breaking_all_matchs(Matches,1,10)
 ```
-
 
 ```{r}
 write.xlsx(Tab_recap,"tableau_recapitulatif.xlsx")
 ```
-#<<<<<<< HEAD
 
 ```{r}
 Tab_recap
 ```
+```{r}
+tab = Tab_recap %>% arrange(desc(ratio_pass_broke_line))
+tab
+ggplot(tab[0:20,]) + geom_col(aes(x = ratio_pass_broke_line, y = reorder(player.name, ratio_pass_broke_line), fill =team.name))+
+  ggtitle("ratio of broken line passes during a match for each player")+
+  ylab("player name")
+```
+
+
 
 ```{r}
-match1 = Tab_recap[Tab_recap[,"number_of_matches"]==1,]
-match2 = Tab_recap[Tab_recap[,"number_of_matches"]==2,]
-match3 = Tab_recap[Tab_recap[,"number_of_matches"]==3,]
-match4 = Tab_recap[Tab_recap[,"number_of_matches"]==4,]
-match5 = Tab_recap[Tab_recap[,"number_of_matches"]==5,]
-match6 = Tab_recap[Tab_recap[,"number_of_matches"]==6,]
+#match1 = Tab_recap[Tab_recap[,"number_of_matches"]==1,]
+#match2 = Tab_recap[Tab_recap[,"number_of_matches"]==2,]
+#match3 = Tab_recap[Tab_recap[,"number_of_matches"]==3,]
+#match4 = Tab_recap[Tab_recap[,"number_of_matches"]==4,]
+#match5 = Tab_recap[Tab_recap[,"number_of_matches"]==5,]
+#match6 = Tab_recap[Tab_recap[,"number_of_matches"]==6,]
 ```
+
+
 
 ```{r fig.height=15}
 ggplot(match1) + geom_col(aes(x = num_elim_players, y = reorder(name_passer, num_elim_players)),fill = "darkblue")+
