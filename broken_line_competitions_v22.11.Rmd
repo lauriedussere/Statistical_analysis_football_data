@@ -10,8 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
-devtools::install_github("statsbomb/StatsBombR")
-'https://statsbomb.com/news/statsbomb-announce-the-release-of-free-statsbomb-360-data-euro-2020-available-now/'
+# devtools::install_github("statsbomb/StatsBombR")
+# 'https://statsbomb.com/news/statsbomb-announce-the-release-of-free-statsbomb-360-data-euro-2020-available-now/'
 ```
 
 ```{r warning=FALSE}
@@ -688,6 +688,10 @@ join_dataframe=function(data1, data2){
       add = data2[k,"nb_pass_complete"]
       data1[data1[,"nb_pass_complete"]==data2$player.name[k],"nb_pass_complete"] = before_add + add
       
+      # before_add = data1[data1[,"nb_but"]==data2$player.name[k],"nb_but"]
+      # add = data2[k,"nb_but"]
+      # data1[data1[,"nb_but"]==data2$player.name[k],"nb_but"] = before_add + add
+      
     }else {
       data1 = rbind(data1, data2[c(k),])
     }
@@ -702,6 +706,10 @@ line_breaking_all_matchs=function(Matches,begin=1,end=nrow(Matches)){
   for (i in begin:end){
     print(paste("On regarde le match ", i))
     
+    nb_but_away <- Matches$away_score[i]
+    nb_but_home <- Matches$home_score[i]
+    home_team <- Matches$home_team.country.name[i]
+    away_team <- Matches$away_team.country.name[i]
 
     data360 <- StatsBombFree360Events(MatchesDF = Matches[i,1], Parallel = T)    
     
@@ -813,6 +821,11 @@ line_breaking_all_matchs=function(Matches,begin=1,end=nrow(Matches)){
       
       tab1[,"number_of_matches"] = tab1[,"number_of_matches"]+1
       
+      # result = tab1[tab1[,"team.name"]==away_team,"nb_but"]
+      # tab1[tab1[,"team.name"]==away_team,"nb_but"] = result + nb_but_away
+      # result = tab1[tab1[,"team.name"]==home_team,"nb_but"]
+      # tab1[tab1[,"team.name"]==home_team,"nb_but"] = result + nb_but_home
+      
       recap = tab1
       
       
@@ -877,6 +890,13 @@ line_breaking_all_matchs=function(Matches,begin=1,end=nrow(Matches)){
       }
       
       tab1[,"number_of_matches"] = tab1[,"number_of_matches"]+1
+      
+      # result = tab1[tab1[,"team.name"]==away_team,"nb_but"]
+      # tab1[tab1[,"team.name"]==away_team,"nb_but"] = result + nb_but_away
+      # result = tab1[tab1[,"team.name"]==home_team,"nb_but"]
+      # tab1[tab1[,"team.name"]==home_team,"nb_but"] = result + nb_but_home
+      
+      
       num_eliminated_player_for_this_match = tab1
       
       recap = join_dataframe(recap,num_eliminated_player_for_this_match)
@@ -910,13 +930,16 @@ recap[is.na(recap[,"ratio_nb_eliminated_players"]),"ratio_nb_eliminated_players"
 ```
 
 ```{r}
-Tab_recap = line_breaking_all_matchs(Matches,1,2)
+Tab_recap = line_breaking_all_matchs(Matches,1,10)
 ```
 
 ```{r}
 head(Tab_recap)
 ```
 
+```{r}
+Tab_recap
+```
 
 
 
@@ -933,9 +956,11 @@ res.acp <- PCA(data_acp[,-1],scale.unit=TRUE,ncp=20, graph=FALSE)
 ```{r}
 #cat("\nPourcentages d’inerties cumulées des axes principaux :\n")
 #print(res.acp$eig[,"cumulative percentage of variance"]) 
+library(ggpubr)
 fviz_screeplot(res.acp, addlabels = TRUE, ylim = c(0, 80), main="Pourcentages d’inerties")
 ```
 ```{r}
+library(reshape2)
 acp = prcomp(data_acp[,-1])
 acpVar =as.data.frame(acp$rotation)
 acpVar=acpVar[,1:4]
@@ -965,6 +990,37 @@ fviz_pca_ind(res.acp,repel=TRUE, addEllipses = TRUE, ellipse.level = 0.95,axes=c
 ```
 
 
+```{r}
+dataframe_but <- as.list(unique(Matches[,"home_team.country.name"]))
+dataframe_but2 <- as.list(unique(Matches[,"away_team.country.name"]))
+
+list_team = c(dataframe_but,dataframe_but2)
+list_team = unique(unlist(list_team))
+# list_team
+
+dataframe_recap_but <- as.data.frame(list_team)
+dataframe_recap_but = cbind(dataframe_recap_but,rep(0,nrow(dataframe_recap_but)))
+colnames(dataframe_recap_but)[ncol(dataframe_recap_but)] = "nb_but"
+
+
+
+for (i in 1:nrow(Matches)){
+    nb_but_away <- Matches$away_score[i]
+    nb_but_home <- Matches$home_score[i]
+    home_team <- Matches$home_team.country.name[i]
+    away_team <- Matches$away_team.country.name[i]
+    
+    print(home_team)
+    
+    result = dataframe_recap_but[dataframe_recap_but[,"list_team"]==away_team,"nb_but"]
+    dataframe_recap_but[dataframe_recap_but[,"list_team"]==away_team,"nb_but"] = result + nb_but_away
+    result = dataframe_recap_but[dataframe_recap_but[,"list_team"]==home_team,"nb_but"]
+    dataframe_recap_but[dataframe_recap_but[,"list_team"]==home_team,"nb_but"] = result + nb_but_home
+}
+
+dataframe_recap_but
+
+```
 
 
 ```{r}
@@ -975,9 +1031,13 @@ data_frame_team <- Tab_recap %>% group_by(team.name) %>%
 
 data_frame_team
 
-data_acp[,"team.name"] = as.factor(data_acp[,"team.name"])
+data_acp_team = data_frame_team
+data_acp_team[,"team.name"] = as.factor(data_acp_team[,"team.name"])
 
-res.acp <- PCA(data_frame_team[,-1],scale.unit=TRUE,ncp=20, graph=FALSE)
+res.data_acp_team <- PCA(data_acp_team[,-1],scale.unit=TRUE,ncp=20, graph=FALSE)
+
+
+fviz_screeplot(res.data_acp_team, addlabels = TRUE, ylim = c(0, 80), main="Pourcentages d’inerties")
 ```
 
 
